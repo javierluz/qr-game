@@ -1,16 +1,47 @@
 ---
-
+import Layout from '../layouts/Layout.astro';
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<Layout title="QR Game" description="Welcome to the QR code game!">
+	<h1>Welcome to QR Game</h1>
+	<p>
+		Get ready to embark on an exciting QR code adventure! 
+		Scan codes, solve puzzles, and explore the world around you.
+	</p>
+	
+	<div class="navigation">
+		<h2>Development Pages</h2>
+		<ul>
+			<li><a href="/supabase-example">Supabase Integration Example</a></li>
+		</ul>
+	</div>
+</Layout>
+
+<style>
+	.navigation {
+		margin-top: 2rem;
+		padding: 1rem;
+		border: 1px solid #374151;
+		border-radius: 8px;
+	}
+	
+	.navigation ul {
+		list-style-type: none;
+		padding: 0;
+	}
+	
+	.navigation li {
+		margin: 0.5rem 0;
+	}
+	
+	.navigation a {
+		color: #60a5fa;
+		text-decoration: none;
+		font-weight: 500;
+	}
+	
+	.navigation a:hover {
+		color: #3b82f6;
+		text-decoration: underline;
+	}
+</style>

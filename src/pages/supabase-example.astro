@@ -1,0 +1,295 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Supabase Example" description="Example of using Supabase with AstroJS">
+  <h1>Supabase Integration Example</h1>
+  <p>This page demonstrates how to use Supabase in your QR Game project.</p>
+  
+  <div id="auth-section">
+    <h2>Authentication</h2>
+    
+    <!-- Sign Up Form -->
+    <div id="signup-form" class="auth-form">
+      <h3>Sign Up</h3>
+      <form id="signup-form-element">
+        <div class="form-group">
+          <label for="signup-email">Email:</label>
+          <input type="email" id="signup-email" required>
+        </div>
+        <div class="form-group">
+          <label for="signup-password">Password:</label>
+          <input type="password" id="signup-password" required>
+        </div>
+        <div class="form-group">
+          <label for="signup-display-name">Display Name:</label>
+          <input type="text" id="signup-display-name" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Sign Up</button>
+      </form>
+    </div>
+
+    <!-- Login Form -->
+    <div id="login-form" class="auth-form">
+      <h3>Log In</h3>
+      <form id="login-form-element">
+        <div class="form-group">
+          <label for="login-email">Email:</label>
+          <input type="email" id="login-email" required>
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password:</label>
+          <input type="password" id="login-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Log In</button>
+      </form>
+    </div>
+
+    <!-- Auth Buttons (legacy fallback) -->
+    <div id="auth-buttons" style="display: none;">
+      <button id="signup-btn" class="btn btn-primary">Sign Up</button>
+      <button id="login-btn" class="btn btn-primary">Log In</button>
+      <button id="logout-btn" class="btn btn-secondary" style="display: none;">Log Out</button>
+    </div>
+
+    <!-- User Info -->
+    <div id="user-info" style="display: none;">
+      <h3 id="welcome-message">Welcome!</h3>
+      <p id="user-email"></p>
+      <p id="user-display-name"></p>
+      <button id="logout-btn" class="btn btn-secondary">Log Out</button>
+    </div>
+  </div>
+
+  <div id="data-section">
+    <h2>Data Operations</h2>
+    <button id="test-db-btn" class="btn btn-secondary">Test Database Connection</button>
+    <div id="db-result"></div>
+  </div>
+</Layout>
+
+<script>
+  import { supabase } from '../lib/supabase';
+
+  // DOM elements
+  const signupForm = document.getElementById('signup-form');
+  const loginForm = document.getElementById('login-form');
+  const signupFormElement = document.getElementById('signup-form-element');
+  const loginFormElement = document.getElementById('login-form-element');
+  const signupBtn = document.getElementById('signup-btn');
+  const loginBtn = document.getElementById('login-btn');
+  const logoutBtn = document.getElementById('logout-btn');
+  const userInfo = document.getElementById('user-info');
+  const userEmail = document.getElementById('user-email');
+  const userDisplayName = document.getElementById('user-display-name');
+  const welcomeMessage = document.getElementById('welcome-message');
+  const testDbBtn = document.getElementById('test-db-btn');
+  const dbResult = document.getElementById('db-result');
+
+  // Check initial auth state
+  checkAuthState();
+
+  async function checkAuthState() {
+    const { data: { user } } = await supabase.auth.getUser();
+    updateUI(user);
+  }
+
+  function updateUI(user: any) {
+    if (user) {
+      // Hide forms and show user info
+      if (signupForm) signupForm.style.display = 'none';
+      if (loginForm) loginForm.style.display = 'none';
+      if (userInfo) userInfo.style.display = 'block';
+      
+      // Update user information
+      if (userEmail) userEmail.textContent = `Email: ${user.email || 'No email'}`;
+      
+      // Display the user's display name if available
+      const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name;
+      if (userDisplayName) {
+        userDisplayName.textContent = displayName ? `Display Name: ${displayName}` : '';
+      }
+      if (welcomeMessage && displayName) {
+        welcomeMessage.textContent = `Welcome, ${displayName}!`;
+      } else if (welcomeMessage) {
+        welcomeMessage.textContent = 'Welcome!';
+      }
+    } else {
+      // Show forms and hide user info
+      if (signupForm) signupForm.style.display = 'block';
+      if (loginForm) loginForm.style.display = 'block';
+      if (userInfo) userInfo.style.display = 'none';
+    }
+  }
+
+  // Form event handlers
+  signupFormElement?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const email = (document.getElementById('signup-email') as HTMLInputElement)?.value;
+    const password = (document.getElementById('signup-password') as HTMLInputElement)?.value;
+    const displayName = (document.getElementById('signup-display-name') as HTMLInputElement)?.value;
+    
+    if (!email || !password || !displayName) {
+      alert('Please fill in all fields');
+      return;
+    }
+    
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          display_name: displayName,
+          full_name: displayName
+        }
+      }
+    });
+    
+    if (error) {
+      alert('Error signing up: ' + error.message);
+    } else {
+      alert('Check your email for verification link!');
+      console.log('User signed up:', data.user);
+      // Clear form
+      (document.getElementById('signup-email') as HTMLInputElement).value = '';
+      (document.getElementById('signup-password') as HTMLInputElement).value = '';
+      (document.getElementById('signup-display-name') as HTMLInputElement).value = '';
+    }
+  });
+
+  loginFormElement?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const email = (document.getElementById('login-email') as HTMLInputElement)?.value;
+    const password = (document.getElementById('login-password') as HTMLInputElement)?.value;
+    
+    if (!email || !password) {
+      alert('Please fill in all fields');
+      return;
+    }
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    if (error) {
+      alert('Error logging in: ' + error.message);
+    } else {
+      // Clear form
+      (document.getElementById('login-email') as HTMLInputElement).value = '';
+      (document.getElementById('login-password') as HTMLInputElement).value = '';
+    }
+  });
+
+  logoutBtn?.addEventListener('click', async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      alert('Error logging out: ' + error.message);
+    }
+  });
+
+  // Listen for auth changes
+  supabase.auth.onAuthStateChange((event, session) => {
+    updateUI(session?.user || null);
+  });
+
+  // Test database connection
+  testDbBtn?.addEventListener('click', async () => {
+    try {
+      const { data, error } = await supabase
+        .from('test')
+        .select('*')
+        .limit(1);
+      
+      if (error) {
+        if (dbResult) dbResult.innerHTML = `<p class="error">Database test failed: ${error.message}</p>`;
+      } else {
+        if (dbResult) dbResult.innerHTML = `<p class="success">Database connection successful! ${data ? `Found ${data.length} records.` : 'No data returned.'}</p>`;
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      if (dbResult) dbResult.innerHTML = `<p class="error">Connection error: ${errorMessage}</p>`;
+    }
+  });
+</script>
+
+<style>
+  .auth-form {
+    margin: 1rem 0;
+    padding: 1rem;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    max-width: 400px;
+  }
+  
+  .form-group {
+    margin-bottom: 1rem;
+  }
+  
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #e5e7eb;
+  }
+  
+  .form-group input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #4b5563;
+    border-radius: 4px;
+    background-color: #1f2937;
+    color: white;
+    font-size: 1rem;
+  }
+  
+  .form-group input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  }
+
+  .btn {
+    padding: 0.5rem 1rem;
+    margin: 0.25rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+  
+  .btn-primary {
+    background-color: #3b82f6;
+    color: white;
+  }
+  
+  .btn-primary:hover {
+    background-color: #2563eb;
+  }
+  
+  .btn-secondary {
+    background-color: #6b7280;
+    color: white;
+  }
+  
+  .btn-secondary:hover {
+    background-color: #4b5563;
+  }
+  
+  #auth-section, #data-section {
+    margin: 2rem 0;
+    padding: 1rem;
+    border: 1px solid #374151;
+    border-radius: 8px;
+  }
+  
+  .success {
+    color: #10b981;
+  }
+  
+  .error {
+    color: #ef4444;
+  }
+</style>
