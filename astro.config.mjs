@@ -8,5 +8,7 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()]
   },
-  integrations: [react()]
+  integrations: [react()],
+  output: 'static', // o 'server' si usas SSR
+  adapter: undefined, // Cloudflare Pages maneja esto automáticamente
 });
