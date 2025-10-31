@@ -388,3 +388,110 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Display Name Editing Styles */
+.display-name-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.edit-name-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 107, 53, 0.3);
+  color: #f7931e;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.edit-name-btn:hover {
+  background: rgba(255, 107, 53, 0.1);
+  border-color: #f7931e;
+}
+
+.edit-name-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.edit-name-input {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 107, 53, 0.3);
+  color: white;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  width: 100%;
+}
+
+.edit-name-input:focus {
+  outline: none;
+  border-color: #f7931e;
+  box-shadow: 0 0 0 2px rgba(247, 147, 30, 0.2);
+}
+
+.edit-name-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.save-btn {
+  background: linear-gradient(45deg, #10b981, #059669);
+  color: white;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.save-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);
+}
+
+.cancel-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #9ca3af;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Desertion Progress Bar */
+.progress-fill.desertion {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.progress-note {
+  color: #9ca3af;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+/* Responsive adjustments for editing */
+@media (max-width: 640px) {
+  .edit-name-actions {
+    flex-direction: column;
+  }
+  
+  .display-name-container {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+}

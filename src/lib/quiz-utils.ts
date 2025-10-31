@@ -17,6 +17,7 @@ export interface UserSelectedQuiz {
   quiz_id: string;
   choice: 'trick' | 'treat';
   completed: boolean;
+  deserted?: boolean; // New field for deserting tricks
   created_at: string;
   quiz?: Quiz;
 }
@@ -36,9 +37,9 @@ export async function getCurrentUser() {
 }
 
 /**
- * Get the most recent active trick for the current user
+ * Get all active tricks for the current user (not completed and not deserted)
  */
-export async function getActiveTrick(userId: string): Promise<UserSelectedQuiz | null> {
+export async function getActiveTricks(userId: string): Promise<UserSelectedQuiz[]> {
   const { data, error } = await supabase
     .from('user_selected_quizzes')
     .select(`
@@ -47,16 +48,25 @@ export async function getActiveTrick(userId: string): Promise<UserSelectedQuiz |
     `)
     .eq('user_id', userId)
     .eq('choice', 'trick')
-    .order('created_at', { ascending: false })
-    .limit(1);
+    .eq('completed', false)
+    .is('deserted', null) // Only get non-deserted tricks
+    .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Error getting active trick:', error);
-    return null;
+    console.error('Error getting active tricks:', error);
+    return [];
   }
 
-  // Return the first item if array has data, otherwise null
-  return data && data.length > 0 ? data[0] : null;
+  return data || [];
+}
+
+/**
+ * Get the most recent active trick for the current user (for backward compatibility)
+ * @deprecated Use getActiveTricks instead for multiple tricks support
+ */
+export async function getActiveTrick(userId: string): Promise<UserSelectedQuiz | null> {
+  const tricks = await getActiveTricks(userId);
+  return tricks.length > 0 ? tricks[0] : null;
 }
 
 /**
@@ -103,6 +113,25 @@ export async function markTreatAsCompleted(treatId: string, userId: string): Pro
 
   if (error) {
     console.error('Error marking treat as completed:', error);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Mark a trick as deserted - the trick will no longer count for points
+ */
+export async function markTrickAsDeserted(trickId: string, userId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('user_selected_quizzes')
+    .update({ deserted: true })
+    .eq('id', trickId)
+    .eq('user_id', userId)
+    .eq('choice', 'trick');
+
+  if (error) {
+    console.error('Error marking trick as deserted:', error);
     return false;
   }
 
@@ -210,7 +239,7 @@ export async function hasAvailableQuizzes(userId: string): Promise<boolean> {
 export async function getUserStats(userId: string) {
   const { data, error } = await supabase
     .from('user_selected_quizzes')
-    .select('choice, completed')
+    .select('choice, completed, deserted')
     .eq('user_id', userId);
 
   if (error) {
@@ -218,12 +247,16 @@ export async function getUserStats(userId: string) {
     return {
       totalQuizzes: 0,
       tricksCompleted: 0,
-      treatsCompleted: 0
+      treatsCompleted: 0,
+      tricksDeserted: 0
     };
   }
 
-  // Count all tricks (tricks don't need to be "completed" - they count when selected)
-  const tricksCompleted = data?.filter(item => item.choice === 'trick').length || 0;
+  // Count tricks that are not deserted (tricks don't need to be "completed" - they count when selected and not deserted)
+  const tricksCompleted = data?.filter(item => item.choice === 'trick' && !item.deserted).length || 0;
+  
+  // Count deserted tricks for informational purposes
+  const tricksDeserted = data?.filter(item => item.choice === 'trick' && item.deserted === true).length || 0;
   
   // Count only completed treats for ranking purposes
   const treatsCompleted = data?.filter(item => item.choice === 'treat' && item.completed === true).length || 0;
@@ -231,7 +264,8 @@ export async function getUserStats(userId: string) {
   return {
     totalQuizzes: data?.length || 0,
     tricksCompleted,
-    treatsCompleted
+    treatsCompleted,
+    tricksDeserted
   };
 }
 
@@ -280,7 +314,7 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
     // Get all user selections and group by user
     const { data: allSelections, error: selectionsError } = await supabase
       .from('user_selected_quizzes')
-      .select('user_id, choice, completed');
+      .select('user_id, choice, completed, deserted');
     
     if (selectionsError) {
       console.error('Error getting user selections:', selectionsError);
@@ -295,8 +329,8 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
       const current = userStatsMap.get(userId) || { tricksCompleted: 0, treatsCompleted: 0, totalQuizzes: 0 };
       
       current.totalQuizzes++;
-      if (selection.choice === 'trick') {
-        // All tricks count (no completion concept for tricks)
+      if (selection.choice === 'trick' && !selection.deserted) {
+        // Only count tricks that are not deserted for ranking
         current.tricksCompleted++;
       } else if (selection.choice === 'treat' && selection.completed === true) {
         // Only completed treats count for ranking

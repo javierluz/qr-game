@@ -22,6 +22,19 @@ export const RankList = () => {
     };
 
     fetchLeaderboard();
+
+    // Listen for custom event to refresh leaderboard
+    const handleRefreshLeaderboard = () => {
+      console.log('Refreshing leaderboard due to custom event');
+      fetchLeaderboard();
+    };
+
+    window.addEventListener('refreshLeaderboard', handleRefreshLeaderboard);
+
+    // Cleanup event listener
+    return () => {
+      window.removeEventListener('refreshLeaderboard', handleRefreshLeaderboard);
+    };
   }, []);
 
   const getRankDisplay = (rank: number) => {

@@ -30,16 +30,15 @@ import { RankList } from '../components/RankList';
         </div>
       </section>
 
-      <!-- Active Trick Section -->
-      <section id="active-trick" class="active-trick hidden">
-        <div class="trick-card">
-          <div class="trick-header">
-            <h2>🎭 Tu Trick Activo</h2>
-            <span class="trick-badge">ACTIVO</span>
+      <!-- Active Tricks Section -->
+      <section id="active-tricks" class="active-tricks hidden">
+        <div class="tricks-container">
+          <div class="tricks-header">
+            <h2>🎭 Tus Tricks Activos</h2>
+            <span id="tricks-count" class="count-badge">0</span>
           </div>
-          <div class="trick-content">
-            <h3 id="trick-title"></h3>
-            <p id="trick-description"></p>
+          <div id="tricks-list" class="tricks-list">
+            <!-- Tricks will be dynamically inserted here -->
           </div>
         </div>
       </section>
@@ -82,7 +81,7 @@ import { RankList } from '../components/RankList';
           </div>
           <div class="stat-card">
             <div class="stat-number" id="tricks-completed">0</div>
-            <div class="stat-label">Tricks Completados</div>
+            <div class="stat-label">Tricks Activos</div>
           </div>
           <div class="stat-card">
             <div class="stat-number" id="treats-completed">0</div>
@@ -108,16 +107,16 @@ import { RankList } from '../components/RankList';
 </Layout>
 
 <script>
-  import { getCurrentUser, getActiveTrick, getActiveTreats, markTreatAsCompleted, getUserStats } from '../lib/quiz-utils';
+  import { getCurrentUser, getActiveTricks, getActiveTreats, markTreatAsCompleted, markTrickAsDeserted, getUserStats } from '../lib/quiz-utils';
 
   // DOM Elements
   const loadingElement = document.getElementById('loading');
-  const activeTrickSection = document.getElementById('active-trick');
+  const activeTricksSection = document.getElementById('active-tricks');
   const activeTreatsSection = document.getElementById('active-treats');
   const noActiveContentSection = document.getElementById('no-active-content');
   const globalActionsSection = document.getElementById('global-actions');
-  const trickTitle = document.getElementById('trick-title');
-  const trickDescription = document.getElementById('trick-description');
+  const tricksCountElement = document.getElementById('tricks-count');
+  const tricksListElement = document.getElementById('tricks-list');
   const treatsCountElement = document.getElementById('treats-count');
   const treatsListElement = document.getElementById('treats-list');
   const totalQuizzesElement = document.getElementById('total-quizzes');
@@ -152,27 +151,27 @@ import { RankList } from '../components/RankList';
   async function loadActiveContent(userId: string) {
     console.log('Loading active content for user:', userId); // Debug log
     try {
-      // Load both active trick and active treats
-      const [activeTrick, activeTreats] = await Promise.all([
-        getActiveTrick(userId),
+      // Load both active tricks and active treats
+      const [activeTricks, activeTreats] = await Promise.all([
+        getActiveTricks(userId),
         getActiveTreats(userId)
       ]);
       
+      console.log('Active tricks loaded:', activeTricks); // Debug log
       console.log('Active treats loaded:', activeTreats); // Debug log
       let hasActiveContent = false;
       
-      // Handle active trick
-      if (activeTrick && activeTrick.quiz) {
+      // Handle active tricks
+      if (activeTricks && activeTricks.length > 0) {
         hasActiveContent = true;
-        if (trickTitle) trickTitle.textContent = activeTrick.quiz.trick_title;
-        if (trickDescription) trickDescription.textContent = activeTrick.quiz.trick_content;
+        displayActiveTricks(activeTricks);
         
-        if (activeTrickSection) {
-          activeTrickSection.classList.remove('hidden');
+        if (activeTricksSection) {
+          activeTricksSection.classList.remove('hidden');
         }
       } else {
-        if (activeTrickSection) {
-          activeTrickSection.classList.add('hidden');
+        if (activeTricksSection) {
+          activeTricksSection.classList.add('hidden');
         }
       }
       
@@ -309,6 +308,103 @@ import { RankList } from '../components/RankList';
     }
   }
 
+  function displayActiveTricks(tricks: any[]) {
+    console.log('Displaying tricks:', tricks); // Debug log
+    if (!tricksListElement || !tricksCountElement) return;
+    
+    // Update count
+    tricksCountElement.textContent = tricks.length.toString();
+    
+    // Clear existing tricks
+    tricksListElement.innerHTML = '';
+    
+    // Add each trick
+    tricks.forEach(trick => {
+      console.log('Adding trick:', trick); // Debug log
+      if (!trick.quiz) return;
+      
+      const trickCard = document.createElement('div');
+      trickCard.className = 'trick-item';
+      trickCard.innerHTML = `
+        <div class="trick-item-content">
+          <h4>${trick.quiz.trick_title}</h4>
+          <p>${trick.quiz.trick_content}</p>
+        </div>
+        <div class="trick-item-actions">
+          <button class="btn btn-danger btn-desert bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-semibold py-2 px-4 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg" data-trick-id="${trick.id}">
+            🏳️ Desertar
+          </button>
+        </div>
+      `;
+      
+      tricksListElement.appendChild(trickCard);
+    });
+    
+    // Add event listeners for desert buttons
+    const desertButtons = tricksListElement.querySelectorAll('.btn-desert');
+    console.log('Found desert buttons:', desertButtons.length); // Debug log
+    desertButtons.forEach(button => {
+      console.log('Adding event listener to desert button:', button); // Debug log
+      button.addEventListener('click', handleDesertTrick);
+    });
+  }
+
+  async function handleDesertTrick(event: Event) {
+    console.log('Desert button clicked!', event); // Debug log
+    const button = event.currentTarget as HTMLButtonElement;
+    const trickId = button.getAttribute('data-trick-id');
+    
+    console.log('Trick ID:', trickId); // Debug log
+    if (!trickId) return;
+
+    // Confirm action
+    const confirmed = confirm(
+      '⚠️ ¿Estás seguro de que quieres desertar este trick?\n\n' +
+      'Al desertar:\n' +
+      '• El trick dejará de contabilizar para tu ranking\n' +
+      '• No podrás volver a activarlo\n' +
+      '• Esta acción es permanente\n\n' +
+      '¿Continuar?'
+    );
+
+    if (!confirmed) return;
+    
+    // Disable button and show loading
+    button.disabled = true;
+    button.textContent = '⏳ Desertando...';
+    
+    try {
+      const user = await getCurrentUser();
+      if (!user) return;
+      
+      console.log('Attempting to mark trick as deserted:', trickId, 'for user:', user.id); // Debug log
+      
+      const success = await markTrickAsDeserted(trickId, user.id);
+      
+      if (success) {
+        // Reload the content to refresh the tricks list
+        await loadActiveContent(user.id);
+        await loadUserStats(user.id);
+        
+        // Trigger leaderboard refresh
+        window.dispatchEvent(new CustomEvent('refreshLeaderboard'));
+        
+        // Show success message
+        showSuccess('¡Trick desertado! Ya no contará para tu ranking. 🏳️');
+      } else {
+        // Re-enable button on error
+        button.disabled = false;
+        button.textContent = '🏳️ Desertar';
+        showError('Error al desertar el trick. Inténtalo de nuevo.');
+      }
+    } catch (error) {
+      console.error('Error deserting trick:', error);
+      button.disabled = false;
+      button.textContent = '🏳️ Desertar';
+      showError('Error al desertar el trick. Inténtalo de nuevo.');
+    }
+  }
+
   async function loadUserStats(userId: string) {
     try {
       const stats = await getUserStats(userId);
@@ -438,12 +534,12 @@ import { RankList } from '../components/RankList';
     box-shadow: 0 6px 20px rgba(249, 115, 22, 0.4);
   }
 
-  /* Active Trick Styles */
-  .active-trick {
+  /* Active Tricks Styles */
+  .active-tricks {
     margin-bottom: 2rem;
   }
 
-  .trick-card {
+  .tricks-container {
     background: linear-gradient(135deg, #f97316, #ea580c);
     border-radius: 12px;
     padding: 1.5rem;
@@ -451,36 +547,54 @@ import { RankList } from '../components/RankList';
     box-shadow: 0 8px 25px rgba(249, 115, 22, 0.3);
   }
 
-  .trick-header {
+  .tricks-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1rem;
   }
 
-  .trick-header h2 {
+  .tricks-header h2 {
     margin: 0;
     font-weight: bold;
     font-size: 1.5rem;
   }
 
-  .trick-badge {
-    background: rgba(255, 255, 255, 0.2);
-    padding: 0.25rem 0.75rem;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: bold;
+  .tricks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
 
-  .trick-content h3 {
+  .trick-item {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .trick-item-content {
+    flex: 1;
+  }
+
+  .trick-item-content h4 {
     margin: 0 0 0.5rem 0;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
+    color: #fff;
   }
 
-  .trick-content p {
+  .trick-item-content p {
     margin: 0;
     opacity: 0.9;
-    line-height: 1.6;
+    line-height: 1.4;
+    font-size: 0.9rem;
+  }
+
+  .trick-item-actions {
+    flex-shrink: 0;
   }
 
   /* Active Treats Styles */
