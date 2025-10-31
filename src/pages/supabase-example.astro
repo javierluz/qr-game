@@ -64,12 +64,15 @@ import Layout from '../layouts/Layout.astro';
   <div id="data-section">
     <h2>Data Operations</h2>
     <button id="test-db-btn" class="btn btn-secondary">Test Database Connection</button>
+    <button id="reset-user-data-btn" class="btn btn-danger">🗑️ Reset User Data</button>
     <div id="db-result"></div>
+    <div id="reset-result"></div>
   </div>
 </Layout>
 
 <script>
   import { supabase } from '../lib/supabase';
+  import { resetUserData } from '../lib/quiz-utils';
 
   // DOM elements
   const signupForm = document.getElementById('signup-form');
@@ -85,6 +88,8 @@ import Layout from '../layouts/Layout.astro';
   const welcomeMessage = document.getElementById('welcome-message');
   const testDbBtn = document.getElementById('test-db-btn');
   const dbResult = document.getElementById('db-result');
+  const resetUserDataBtn = document.getElementById('reset-user-data-btn');
+  const resetResult = document.getElementById('reset-result');
 
   // Check initial auth state
   checkAuthState();
@@ -213,6 +218,61 @@ import Layout from '../layouts/Layout.astro';
       if (dbResult) dbResult.innerHTML = `<p class="error">Connection error: ${errorMessage}</p>`;
     }
   });
+
+  // Reset user data
+  resetUserDataBtn?.addEventListener('click', async () => {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      if (resetResult) resetResult.innerHTML = `<p class="error">You must be logged in to reset user data.</p>`;
+      return;
+    }
+
+    // Confirm the action
+    const confirmed = confirm(
+      '⚠️ WARNING: This will permanently delete ALL your game data including:\n\n' +
+      '• All completed tricks and treats\n' +
+      '• Your current active trick\n' +
+      '• Your completion history\n' +
+      '• Your ranking progress\n\n' +
+      'This action CANNOT be undone!\n\n' +
+      'Are you absolutely sure you want to reset ALL your data?'
+    );
+
+    if (!confirmed) {
+      if (resetResult) resetResult.innerHTML = `<p class="info">Reset cancelled.</p>`;
+      return;
+    }
+
+    // Double confirmation for safety
+    const doubleConfirmed = confirm(
+      '🚨 FINAL CONFIRMATION\n\n' +
+      'You are about to permanently delete all your game progress.\n\n' +
+      'Type your email to confirm: ' + user.email + '\n\n' +
+      'Click OK to proceed with the reset, or Cancel to abort.'
+    );
+
+    if (!doubleConfirmed) {
+      if (resetResult) resetResult.innerHTML = `<p class="info">Reset cancelled.</p>`;
+      return;
+    }
+
+    try {
+      if (resetResult) resetResult.innerHTML = `<p class="info">🔄 Resetting user data...</p>`;
+      
+      const result = await resetUserData(user.id);
+      
+      if (result.success) {
+        if (resetResult) resetResult.innerHTML = `<p class="success">✅ ${result.message}</p>`;
+      } else {
+        if (resetResult) resetResult.innerHTML = `<p class="error">❌ ${result.message}</p>`;
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      if (resetResult) resetResult.innerHTML = `<p class="error">❌ Unexpected error: ${errorMessage}</p>`;
+    }
+  });
 </script>
 
 <style>
@@ -278,6 +338,15 @@ import Layout from '../layouts/Layout.astro';
     background-color: #4b5563;
   }
   
+  .btn-danger {
+    background-color: #ef4444;
+    color: white;
+  }
+  
+  .btn-danger:hover {
+    background-color: #dc2626;
+  }
+  
   #auth-section, #data-section {
     margin: 2rem 0;
     padding: 1rem;
@@ -291,5 +360,9 @@ import Layout from '../layouts/Layout.astro';
   
   .error {
     color: #ef4444;
+  }
+  
+  .info {
+    color: #3b82f6;
   }
 </style>

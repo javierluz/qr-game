@@ -1,0 +1,199 @@
+---
+import Layout from '../layouts/Layout.astro';
+import UserStatsComponent from '../components/UserStatsComponent';
+import '../styles/user-stats.css';
+---
+
+<Layout title="QR Trick or Treat - Estadísticas" description="Tus estadísticas y progreso en Halloween">
+  <div class="stats-page-container">
+    <!-- Header -->
+    <header class="stats-header">
+      <a href="/home" class="back-button">← Volver al inicio</a>
+      <div class="stats-header-content">
+        <h1 class="stats-title">📊 Tus Estadísticas</h1>
+        <p class="stats-subtitle">Descubre tu progreso en la aventura Halloween</p>
+      </div>
+      <div class="halloween-decoration">🎃</div>
+    </header>
+
+    <!-- Stats Component -->
+    <main class="stats-main">
+      <UserStatsComponent client:load />
+    </main>
+
+    <!-- Navigation Actions -->
+    <div class="stats-actions">
+      <a href="/get-random-quiz" class="action-button primary">
+        🎲 Nuevo Quiz
+      </a>
+      <a href="/home" class="action-button secondary">
+        🏠 Inicio
+      </a>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .stats-page-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+    padding: 1rem;
+  }
+
+  .stats-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .back-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #d1d5db;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+  }
+
+  .back-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(-2px);
+  }
+
+  .stats-header-content {
+    text-align: center;
+    flex: 1;
+    margin: 0 1rem;
+  }
+
+  .stats-title {
+    font-size: 2rem;
+    font-weight: bold;
+    background: linear-gradient(45deg, #ff6b35, #f7931e, #ff6b35);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradientShift 3s ease infinite;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .stats-subtitle {
+    color: #9ca3af;
+    font-size: 1rem;
+    margin: 0;
+    font-style: italic;
+  }
+
+  .halloween-decoration {
+    font-size: 1.5rem;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .stats-main {
+    max-width: 800px;
+    margin: 0 auto 2rem auto;
+    animation: fadeInUp 0.6s ease;
+  }
+
+  .stats-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    max-width: 400px;
+    margin: 0 auto;
+    flex-wrap: wrap;
+  }
+
+  .action-button {
+    padding: 1rem 2rem;
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    text-align: center;
+    flex: 1;
+    min-width: 150px;
+  }
+
+  .action-button.primary {
+    background: linear-gradient(45deg, #ff6b35, #f7931e);
+    color: white;
+  }
+
+  .action-button.primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 25px rgba(255, 107, 53, 0.4);
+  }
+
+  .action-button.secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: #d1d5db;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .action-button.secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+
+  /* Animaciones */
+  @keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .stats-header {
+      flex-direction: column;
+      gap: 1rem;
+      text-align: center;
+    }
+
+    .stats-title {
+      font-size: 1.5rem;
+    }
+
+    .stats-subtitle {
+      font-size: 0.9rem;
+    }
+
+    .stats-actions {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .action-button {
+      width: 100%;
+      max-width: 300px;
+    }
+
+    .back-button {
+      align-self: flex-start;
+    }
+  }
+</style>

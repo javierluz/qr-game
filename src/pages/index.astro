@@ -3,11 +3,31 @@ import Layout from '../layouts/Layout.astro';
 ---
 
 <Layout title="QR Game" description="Welcome to the QR code game!">
-	<h1>Welcome to QR Game</h1>
+	<h1>🎃 Welcome to QR Trick or Treat</h1>
 	<p>
-		Get ready to embark on an exciting QR code adventure! 
-		Scan codes, solve puzzles, and explore the world around you.
+		¡Get ready for the ultimate Halloween adventure! 
+		Scan QR codes and choose between spine-chilling Tricks or mysterious Treats.
 	</p>
+	
+	<div class="game-navigation">
+		<h2>🕸️ Halloween Game</h2>
+		<div class="game-links">
+			<a href="/home" class="game-link primary">
+				<div class="link-icon">🏠</div>
+				<div class="link-content">
+					<h3>Home</h3>
+					<p>View your active trick and stats</p>
+				</div>
+			</a>
+			<a href="/get-random-quiz" class="game-link secondary">
+				<div class="link-icon">🎲</div>
+				<div class="link-content">
+					<h3>New Adventure</h3>
+					<p>Get a random Trick or Treat</p>
+				</div>
+			</a>
+		</div>
+	</div>
 	
 	<div class="navigation">
 		<h2>Development Pages</h2>
@@ -18,6 +38,83 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <style>
+	h1 {
+		text-align: center;
+		color: #f97316;
+		margin-bottom: 1rem;
+	}
+
+	p {
+		text-align: center;
+		color: #d1d5db;
+		font-size: 1.1rem;
+		margin-bottom: 2rem;
+	}
+
+	.game-navigation {
+		margin-bottom: 3rem;
+	}
+
+	.game-navigation h2 {
+		text-align: center;
+		color: #f97316;
+		margin-bottom: 1.5rem;
+	}
+
+	.game-links {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		gap: 1.5rem;
+		margin-bottom: 2rem;
+	}
+
+	.game-link {
+		display: flex;
+		align-items: center;
+		padding: 1.5rem;
+		border-radius: 12px;
+		text-decoration: none;
+		transition: all 0.3s ease;
+		border: 2px solid transparent;
+	}
+
+	.game-link.primary {
+		background: linear-gradient(135deg, #7c3aed, #a855f7);
+		color: white;
+	}
+
+	.game-link.primary:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 25px rgba(124, 58, 237, 0.4);
+	}
+
+	.game-link.secondary {
+		background: linear-gradient(135deg, #f97316, #ea580c);
+		color: white;
+	}
+
+	.game-link.secondary:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 25px rgba(249, 115, 22, 0.4);
+	}
+
+	.link-icon {
+		font-size: 3rem;
+		margin-right: 1rem;
+	}
+
+	.link-content h3 {
+		margin: 0 0 0.5rem 0;
+		font-size: 1.3rem;
+	}
+
+	.link-content p {
+		margin: 0;
+		font-size: 0.9rem;
+		opacity: 0.9;
+		text-align: left;
+	}
+
 	.navigation {
 		margin-top: 2rem;
 		padding: 1rem;

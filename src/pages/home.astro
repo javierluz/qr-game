@@ -1,0 +1,770 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { RankList } from '../components/RankList';
+---
+
+<Layout title="QR Trick or Treat - Home" description="Tu aventura de Halloween te espera">
+  <div class="home-container">
+    <!-- Header -->
+    <header class="home-header">
+      <h1 class="home-title">🎃 QR Trick or Treat</h1>
+      <p class="home-subtitle">¡Tu aventura de Halloween!</p>
+    </header>
+
+    <!-- Main Content -->
+    <main id="home-content">
+      <div class="loading-state" id="loading">
+        <div class="spinning-pumpkin">🎃</div>
+        <p>Cargando tu aventura...</p>
+      </div>
+
+      <!-- Global Actions Section -->
+      <section id="global-actions" class="global-actions">
+        <div class="global-actions-card">
+          <h3>🎲 ¿Listo para tu próxima aventura?</h3>
+          <p>Obtén un nuevo quiz y elige entre Trick o Treat</p>
+          
+          <a href="/get-random-quiz" class="btn btn-white btn-large btn-quiz">
+            🎲 Nuevo Quiz
+          </a>
+        </div>
+      </section>
+
+      <!-- Active Trick Section -->
+      <section id="active-trick" class="active-trick hidden">
+        <div class="trick-card">
+          <div class="trick-header">
+            <h2>🎭 Tu Trick Activo</h2>
+            <span class="trick-badge">ACTIVO</span>
+          </div>
+          <div class="trick-content">
+            <h3 id="trick-title"></h3>
+            <p id="trick-description"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Active Treats Section -->
+      <section id="active-treats" class="active-treats hidden">
+        <div class="treats-container">
+          <div class="treats-header">
+            <h2>🍭 Tus Treats Pendientes</h2>
+            <span id="treats-count" class="treats-count">0</span>
+          </div>
+          <div id="treats-list" class="treats-list">
+            <!-- Treats will be populated dynamically -->
+          </div>
+        </div>
+      </section>
+
+      <!-- No Active Content Section -->
+      <section id="no-active-content" class="no-active-content hidden">
+        <div class="welcome-card">
+          <div class="halloween-emoji">👻</div>
+          <h2>¡Bienvenido a la aventura!</h2>
+          <p>No tienes ningún Trick o Treat activo. ¡Escanea un código QR para comenzar tu aventura de Halloween!</p>
+          
+          <div class="action-buttons">
+            <a href="/get-random-quiz" class="btn btn-primary btn-large">
+              🎲 ¡Comenzar Aventura!
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats Section -->
+      <section class="stats-section">
+        <h3>📊 Tus Estadísticas</h3>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-number" id="total-quizzes">0</div>
+            <div class="stat-label">Quizzes Totales</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="tricks-completed">0</div>
+            <div class="stat-label">Tricks Completados</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="treats-completed">0</div>
+            <div class="stat-label">Treats Completados</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Leaderboard Section -->
+      <section class="leaderboard-section">
+        <RankList client:load />
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="home-footer">
+      <div class="navigation-links">
+        <a href="/supabase-example" class="nav-link">🔧 Demo</a>
+        <a href="/stats" class="nav-link">📈 Estadísticas Detalladas</a>
+      </div>
+    </footer>
+  </div>
+</Layout>
+
+<script>
+  import { getCurrentUser, getActiveTrick, getActiveTreats, markTreatAsCompleted, getUserStats } from '../lib/quiz-utils';
+
+  // DOM Elements
+  const loadingElement = document.getElementById('loading');
+  const activeTrickSection = document.getElementById('active-trick');
+  const activeTreatsSection = document.getElementById('active-treats');
+  const noActiveContentSection = document.getElementById('no-active-content');
+  const globalActionsSection = document.getElementById('global-actions');
+  const trickTitle = document.getElementById('trick-title');
+  const trickDescription = document.getElementById('trick-description');
+  const treatsCountElement = document.getElementById('treats-count');
+  const treatsListElement = document.getElementById('treats-list');
+  const totalQuizzesElement = document.getElementById('total-quizzes');
+  const tricksCompletedElement = document.getElementById('tricks-completed');
+  const treatsCompletedElement = document.getElementById('treats-completed');
+
+  // Initialize the page
+  async function initializePage() {
+    try {
+      // Check if user is authenticated
+      const user = await getCurrentUser();
+      if (!user) {
+        // Redirect to login if not authenticated
+        window.location.href = '/supabase-example';
+        return;
+      }
+
+      // Load user's active content (both trick and treat)
+      await loadActiveContent(user.id);
+      
+      // Load user stats
+      await loadUserStats(user.id);
+
+    } catch (error) {
+      console.error('Error initializing page:', error);
+      showError('Error al cargar la página. Por favor, recarga.');
+    } finally {
+      hideLoading();
+    }
+  }
+
+  async function loadActiveContent(userId: string) {
+    console.log('Loading active content for user:', userId); // Debug log
+    try {
+      // Load both active trick and active treats
+      const [activeTrick, activeTreats] = await Promise.all([
+        getActiveTrick(userId),
+        getActiveTreats(userId)
+      ]);
+      
+      console.log('Active treats loaded:', activeTreats); // Debug log
+      let hasActiveContent = false;
+      
+      // Handle active trick
+      if (activeTrick && activeTrick.quiz) {
+        hasActiveContent = true;
+        if (trickTitle) trickTitle.textContent = activeTrick.quiz.trick_title;
+        if (trickDescription) trickDescription.textContent = activeTrick.quiz.trick_content;
+        
+        if (activeTrickSection) {
+          activeTrickSection.classList.remove('hidden');
+        }
+      } else {
+        if (activeTrickSection) {
+          activeTrickSection.classList.add('hidden');
+        }
+      }
+      
+      // Handle active treats (multiple)
+      if (activeTreats && activeTreats.length > 0) {
+        hasActiveContent = true;
+        displayActiveTreats(activeTreats);
+        
+        if (activeTreatsSection) {
+          activeTreatsSection.classList.remove('hidden');
+        }
+      } else {
+        // No active treats found, hide the treats section
+        console.log('No active treats found, hiding treats section');
+        if (activeTreatsSection) {
+          activeTreatsSection.classList.add('hidden');
+        }
+      }
+      
+      // Show welcome message if no active content
+      if (noActiveContentSection) {
+        if (hasActiveContent) {
+          noActiveContentSection.classList.add('hidden');
+        } else {
+          noActiveContentSection.classList.remove('hidden');
+        }
+      }
+
+      // Show/hide global actions based on active content
+      if (globalActionsSection) {
+        if (hasActiveContent) {
+          globalActionsSection.classList.remove('hidden');
+        } else {
+          globalActionsSection.classList.add('hidden');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading active content:', error);
+    }
+  }
+
+  function displayActiveTreats(treats: any[]) {
+    console.log('Displaying treats:', treats); // Debug log
+    if (!treatsListElement || !treatsCountElement) return;
+    
+    // Update count
+    treatsCountElement.textContent = treats.length.toString();
+    
+    // Clear existing treats
+    treatsListElement.innerHTML = '';
+    
+    // Add each treat
+    treats.forEach(treat => {
+      console.log('Adding treat:', treat); // Debug log
+      if (!treat.quiz) return;
+      
+      const treatCard = document.createElement('div');
+      treatCard.className = 'treat-item';
+      treatCard.innerHTML = `
+        <div class="treat-item-content">
+          <h4>${treat.quiz.treat_title}</h4>
+          <p>${treat.quiz.treat_content}</p>
+        </div>
+        <div class="treat-item-actions">
+          <button class="btn btn-success btn-complete bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-semibold py-2 px-4 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg" data-treat-id="${treat.id}">
+            ✓ Completar
+          </button>
+        </div>
+      `;
+      
+      treatsListElement.appendChild(treatCard);
+    });
+    
+    // Add event listeners for complete buttons
+    const completeButtons = treatsListElement.querySelectorAll('.btn-complete');
+    console.log('Found complete buttons:', completeButtons.length); // Debug log
+    completeButtons.forEach(button => {
+      console.log('Adding event listener to button:', button); // Debug log
+      button.addEventListener('click', handleCompleteTreat);
+    });
+  }
+
+  async function handleCompleteTreat(event: Event) {
+    console.log('Button clicked!', event); // Debug log
+    const button = event.currentTarget as HTMLButtonElement;
+    const treatId = button.getAttribute('data-treat-id');
+    
+    console.log('Treat ID:', treatId); // Debug log
+    if (!treatId) return;
+    
+    // Disable button and show loading
+    button.disabled = true;
+    button.textContent = '⏳ Completando...';
+    
+    try {
+      const user = await getCurrentUser();
+      if (!user) return;
+      
+      console.log('Attempting to mark treat as completed:', treatId, 'for user:', user.id); // Debug log
+      
+      // For mock data, just simulate success
+      if (treatId.startsWith('mock-')) {
+        console.log('Mock treat detected, simulating success');
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+        
+        // Reload the content to refresh the treats list
+        await loadActiveContent(user.id);
+        await loadUserStats(user.id);
+        
+        showSuccess('¡Treat completado! 🎉 (Mock data)');
+        return;
+      }
+      
+      const success = await markTreatAsCompleted(treatId, user.id);
+      
+      if (success) {
+        // Reload the content to refresh the treats list
+        await loadActiveContent(user.id);
+        await loadUserStats(user.id);
+        
+        // Show success message (optional)
+        showSuccess('¡Treat completado! 🎉');
+      } else {
+        // Re-enable button on error
+        button.disabled = false;
+        button.textContent = '✓ Completar';
+        showError('Error al completar el treat. Inténtalo de nuevo.');
+      }
+    } catch (error) {
+      console.error('Error completing treat:', error);
+      button.disabled = false;
+      button.textContent = '✓ Completar';
+      showError('Error al completar el treat. Inténtalo de nuevo.');
+    }
+  }
+
+  async function loadUserStats(userId: string) {
+    try {
+      const stats = await getUserStats(userId);
+      
+      if (totalQuizzesElement) {
+        totalQuizzesElement.textContent = stats.totalQuizzes.toString();
+      }
+      if (tricksCompletedElement) {
+        tricksCompletedElement.textContent = stats.tricksCompleted.toString();
+      }
+      if (treatsCompletedElement) {
+        treatsCompletedElement.textContent = stats.treatsCompleted.toString();
+      }
+    } catch (error) {
+      console.error('Error loading user stats:', error);
+    }
+  }
+
+  function hideLoading() {
+    if (loadingElement) {
+      loadingElement.classList.add('hidden');
+    }
+  }
+
+  function showError(message: string) {
+    // Simple error display - you can enhance this
+    alert(`❌ ${message}`);
+  }
+
+  function showSuccess(message: string) {
+    // Simple success display - you can enhance this
+    alert(`✅ ${message}`);
+  }
+
+  // Initialize when page loads
+  document.addEventListener('DOMContentLoaded', initializePage);
+</script>
+
+<style>
+  .home-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 1rem;
+  }
+
+  .home-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .home-title {
+    font-size: 2.5rem;
+    margin: 0;
+    color: #f97316;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .home-subtitle {
+    font-size: 1.2rem;
+    color: #d1d5db;
+    margin: 0.5rem 0 0 0;
+  }
+
+  .loading-state {
+    text-align: center;
+    padding: 3rem 1rem;
+  }
+
+  .spinning-pumpkin {
+    font-size: 3rem;
+    animation: spin 2s linear infinite;
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  /* Global Actions Styles */
+  .global-actions {
+    margin-bottom: 2rem;
+  }
+
+  .global-actions-card {
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    border-radius: 16px;
+    padding: 2rem;
+    text-align: center;
+    color: white;
+    box-shadow: 0 8px 32px rgba(124, 58, 237, 0.2);
+    border: 1px solid rgba(124, 58, 237, 0.3);
+  }
+
+  .global-actions-card h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.5rem;
+    font-weight: bold;
+  }
+
+  .global-actions-card p {
+    margin: 0 0 1.5rem 0;
+    opacity: 0.9;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+
+  .btn-quiz {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    border: none;
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 1rem 2rem;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(249, 115, 22, 0.3);
+  }
+
+  .btn-quiz:hover {
+    background: linear-gradient(135deg, #ea580c, #dc2626);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(249, 115, 22, 0.4);
+  }
+
+  /* Active Trick Styles */
+  .active-trick {
+    margin-bottom: 2rem;
+  }
+
+  .trick-card {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    border-radius: 12px;
+    padding: 1.5rem;
+    color: white;
+    box-shadow: 0 8px 25px rgba(249, 115, 22, 0.3);
+  }
+
+  .trick-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .trick-header h2 {
+    margin: 0;
+    font-weight: bold;
+    font-size: 1.5rem;
+  }
+
+  .trick-badge {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+  }
+
+  .trick-content h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.2rem;
+  }
+
+  .trick-content p {
+    margin: 0;
+    opacity: 0.9;
+    line-height: 1.6;
+  }
+
+  /* Active Treats Styles */
+  .active-treats {
+    margin-bottom: 2rem;
+  }
+
+  .treats-container {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    border-radius: 12px;
+    padding: 1.5rem;
+    color: white;
+    box-shadow: 0 8px 25px rgba(245, 158, 11, 0.3);
+  }
+
+  .treats-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .treats-header h2 {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin: 0;
+  }
+
+  .treats-count {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    min-width: 24px;
+    text-align: center;
+  }
+
+  .treats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .treat-item {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    transition: all 0.3s ease;
+  }
+
+  .treat-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(4px);
+  }
+
+  .treat-item-content {
+    flex: 1;
+  }
+
+    .treat-item-content h4 {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin: 0 0 0.5rem 0;
+        color: white;
+    }
+
+  .treat-item-content p {
+    margin: 0;
+    opacity: 0.9;
+    line-height: 1.4;
+    font-size: 0.9rem;
+  }
+
+  .treat-item-actions {
+    flex-shrink: 0;
+  }
+
+  .btn-complete {
+    /* Keep basic structure but let Tailwind handle styling */
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-complete:hover:not(:disabled) {
+    /* Tailwind handles hover effects */
+  }
+
+  .btn-complete:disabled {
+    /* Tailwind handles disabled state */
+  }
+
+  /* No Active Content Styles */
+  .welcome-card {
+    text-align: center;
+    background: #1f2937;
+    border-radius: 12px;
+    padding: 2rem;
+    border: 2px dashed #6b7280;
+  }
+
+  .halloween-emoji {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+  }
+
+  .welcome-card h2 {
+    color: #f9fafb;
+    margin: 0 0 1rem 0;
+  }
+
+  .welcome-card p {
+    color: #d1d5db;
+    margin: 0 0 2rem 0;
+    line-height: 1.6;
+  }
+
+  .action-buttons {
+    display: flex;
+    justify-content: center;
+  }
+
+  /* Stats Styles */
+  .stats-section {
+    margin: 2rem 0;
+  }
+
+  .stats-section h3 {
+    text-align: center;
+    color: #f9fafb;
+    margin-bottom: 1rem;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+  }
+
+  .stat-card {
+    background: #374151;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+  }
+
+  .stat-number {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #10b981;
+    margin-bottom: 0.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.8rem;
+    color: #d1d5db;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Button Styles */
+  .btn {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .btn-primary {
+    background: #7c3aed;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: #6d28d9;
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    background: #6b7280;
+    color: white;
+  }
+
+  .btn-secondary:hover {
+    background: #4b5563;
+  }
+
+  .btn-success {
+    background: #10b981;
+    color: white;
+  }
+
+  .btn-success:hover {
+    background: #059669;
+  }
+
+  .btn-white {
+    background: white;
+    color: black;
+  }
+    .btn-white:hover {
+        background: #f3f4f6;
+    }
+
+  .btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+  }
+
+  /* Footer Styles */
+  .home-footer {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid #374151;
+  }
+
+  .navigation-links {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+  }
+
+  .nav-link {
+    color: #9ca3af;
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+
+  .nav-link:hover {
+    color: #f9fafb;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 640px) {
+    .home-title {
+      font-size: 2rem;
+    }
+    
+    .global-actions-card {
+      padding: 1.5rem;
+    }
+    
+    .global-actions-card h3 {
+      font-size: 1.3rem;
+    }
+    
+    .btn-quiz {
+      width: 100%;
+      font-size: 1rem;
+      padding: 0.875rem 1.5rem;
+    }
+    
+    .treat-item {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.75rem;
+    }
+    
+    .treat-item-actions {
+      text-align: center;
+    }
+    
+    .btn-complete {
+      width: 100%;
+    }
+    
+    .navigation-links {
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+  }
+</style>

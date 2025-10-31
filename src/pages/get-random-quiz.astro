@@ -1,0 +1,1456 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="QR Trick or Treat - Nuevo Quiz" description="Elige entre Trick o Treat en tu nueva aventura">
+  <div class="quiz-container">
+    <!-- Header -->
+    <header class="quiz-header">
+      <a href="/home" class="back-button">← Volver</a>
+      <h1 class="quiz-title">Nueva Aventura</h1>
+      <div class="halloween-decoration">🕸️</div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="quiz-content" class="loading">
+      <div class="loader">
+        <div class="spinning-pumpkin">🎃</div>
+        <p>Preparando tu aventura...</p>
+      </div>
+    </main>
+  </div>
+</Layout>
+
+<script>
+  import { getCurrentUser, getRandomUnseenQuiz, saveUserSelection, hasAvailableQuizzes } from '../lib/quiz-utils';
+  import type { Quiz } from '../lib/quiz-utils';
+
+  interface QuizPageState {
+    user: any | null;
+    currentQuiz: Quiz | null;
+    selectedChoice: 'trick' | 'treat' | null;
+    loading: boolean;
+    error: string | null;
+    stage: 'loading' | 'choosing' | 'showing' | 'completed' | 'no-quizzes';
+  }
+
+  class QuizPage {
+    private state: QuizPageState = {
+      user: null,
+      currentQuiz: null,
+      selectedChoice: null,
+      loading: true,
+      error: null,
+      stage: 'loading'
+    };
+
+    private mainContent: HTMLElement | null = null;
+
+    constructor() {
+      this.mainContent = document.getElementById('quiz-content');
+      this.init();
+    }
+
+    async init() {
+      try {
+        await this.loadUserAndQuiz();
+        this.render();
+      } catch (error) {
+        console.error('Error initializing quiz page:', error);
+        this.state.error = 'Error al cargar el quiz';
+        this.state.stage = 'loading';
+        this.render();
+      }
+    }
+
+    async loadUserAndQuiz() {
+      const user = await getCurrentUser();
+      
+      if (!user) {
+        window.location.href = '/supabase-example';
+        return;
+      }
+
+      this.state.user = user;
+
+      // Verificar si hay quizzes disponibles
+      const hasQuizzes = await hasAvailableQuizzes(user.id);
+      
+      if (!hasQuizzes) {
+        this.state.stage = 'no-quizzes';
+        this.state.loading = false;
+        return;
+      }
+
+      // Obtener quiz aleatorio
+      const quiz = await getRandomUnseenQuiz(user.id);
+      
+      if (!quiz) {
+        this.state.stage = 'no-quizzes';
+      } else {
+        this.state.currentQuiz = quiz;
+        this.state.stage = 'choosing';
+      }
+      
+      this.state.loading = false;
+    }
+
+    async makeChoice(choice: 'trick' | 'treat') {
+      if (!this.state.currentQuiz || !this.state.user) return;
+
+      this.state.selectedChoice = choice;
+      this.state.stage = 'showing';
+      this.render();
+
+      // Guardar la selección en la base de datos
+      try {
+        await saveUserSelection(this.state.user.id, this.state.currentQuiz.id, choice);
+        console.log('Selección guardada exitosamente');
+      } catch (error) {
+        console.error('Error guardando selección:', error);
+        // Continúa mostrando el contenido aunque falle el guardado
+      }
+    }
+
+    goHome() {
+      window.location.href = '/home';
+    }
+
+    tryAgain() {
+      window.location.reload();
+    }
+
+    render() {
+      if (!this.mainContent) return;
+
+      this.mainContent.className = this.state.loading ? 'loading' : 'loaded';
+
+      if (this.state.loading && !this.state.error) {
+        return; // Mantener el loader inicial
+      }
+
+      if (this.state.error) {
+        this.renderError();
+        return;
+      }
+
+      switch (this.state.stage) {
+        case 'choosing':
+          this.renderChoosing();
+          break;
+        case 'showing':
+          this.renderShowing();
+          break;
+        case 'no-quizzes':
+          this.renderNoQuizzes();
+          break;
+        default:
+          this.renderError();
+      }
+    }
+
+    renderChoosing() {
+      if (!this.mainContent || !this.state.currentQuiz) return;
+
+      const quiz = this.state.currentQuiz;
+
+      this.mainContent.innerHTML = `
+        <div class="choice-stage">
+          <div class="quiz-intro">
+            <div class="quiz-icon">📜</div>
+            <h2 class="quiz-name">${quiz.title}</h2>
+            <p class="quiz-description">${quiz.description}</p>
+          </div>
+
+          <div class="choice-section">
+            <h3 class="choice-title">🎯 ¿Qué path eliges?</h3>
+            <p class="choice-subtitle">Cada camino te llevará a una experiencia completamente diferente...</p>
+            
+            <div class="choice-buttons">
+              <button class="choice-btn trick-btn" onclick="quizPageInstance.makeChoice('trick')">
+                <div class="choice-header">
+                  <div class="choice-icon">🎭</div>
+                  <div class="choice-badge trick-badge">TRICK</div>
+                </div>
+                <div class="choice-content">
+                  <h4>Desafío Atrevido</h4>
+                  <p>Un reto que debes cumplir en la vida real</p>
+                  <div class="choice-preview">
+                    <span class="preview-label">Vista previa:</span>
+                    <span class="preview-text">"${quiz.trick_title}"</span>
+                  </div>
+                </div>
+                <div class="choice-action">
+                  <span class="action-text">Acepto el desafío</span>
+                  <div class="choice-arrow">→</div>
+                </div>
+              </button>
+
+              <div class="choice-divider">
+                <div class="divider-line"></div>
+                <span class="divider-text">O ELIGE</span>
+                <div class="divider-line"></div>
+              </div>
+
+              <button class="choice-btn treat-btn" onclick="quizPageInstance.makeChoice('treat')">
+                <div class="choice-header">
+                  <div class="choice-icon">🍭</div>
+                  <div class="choice-badge treat-badge">TREAT</div>
+                </div>
+                <div class="choice-content">
+                  <h4>Confesión Divertida</h4>
+                  <p>Una pregunta personal para compartir</p>
+                  <div class="choice-preview">
+                    <span class="preview-label">Vista previa:</span>
+                    <span class="preview-text">"${quiz.treat_title}"</span>
+                  </div>
+                </div>
+                <div class="choice-action">
+                  <span class="action-text">Quiero compartir</span>
+                  <div class="choice-arrow">→</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div class="explanation-section">
+            <div class="explanation-card trick-explanation">
+              <div class="explanation-icon">🎭</div>
+              <h4>¿Qué son los TRICKS?</h4>
+              <ul>
+                <li>Desafíos que debes completar</li>
+                <li>Actividades en la vida real</li>
+                <li>Solo puedes tener 1 trick activo</li>
+                <li>Reemplaza tu trick anterior</li>
+              </ul>
+            </div>
+            
+            <div class="explanation-card treat-explanation">
+              <div class="explanation-icon">🍭</div>
+              <h4>¿Qué son los TREATS?</h4>
+              <ul>
+                <li>Preguntas para reflexionar</li>
+                <li>Confesiones divertidas</li>
+                <li>Para compartir con otros</li>
+                <li>No hay límite de treats</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="hint-section">
+            <div class="hint-icon">💡</div>
+            <p class="hint-text">
+              <strong>Tip:</strong> Puedes hacer clic en cualquier botón para ver una vista previa del contenido antes de decidir.
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    renderShowing() {
+      if (!this.mainContent || !this.state.currentQuiz || !this.state.selectedChoice) return;
+
+      const quiz = this.state.currentQuiz;
+      const choice = this.state.selectedChoice;
+      const isTrick = choice === 'trick';
+      
+      const title = isTrick ? quiz.trick_title : quiz.treat_title;
+      const content = isTrick ? quiz.trick_content : quiz.treat_content;
+
+      this.mainContent.innerHTML = `
+        <div class="result-stage">
+          <div class="result-header">
+            <div class="result-icon ${choice}-result">
+              ${isTrick ? '🎭' : '🍬'}
+            </div>
+            <div class="choice-badge ${choice}-badge">
+              ${isTrick ? 'TRICK ELEGIDO' : 'TREAT ELEGIDO'}
+            </div>
+          </div>
+
+          <div class="result-content">
+            <h2 class="result-title">${title}</h2>
+            <div class="result-description">
+              <p>${content}</p>
+            </div>
+          </div>
+
+          ${isTrick ? `
+            <div class="trick-notice">
+              <div class="notice-icon">⚡</div>
+              <h4>¡Este es tu nuevo Trick activo!</h4>
+              <p>Este desafío reemplaza cualquier Trick anterior que tuvieras. Puedes verlo siempre en tu página de inicio.</p>
+            </div>
+          ` : `
+            <div class="treat-notice">
+              <div class="notice-icon">✨</div>
+              <h4>¡Hora de compartir!</h4>
+              <p>Este es tu momento para abrirte y compartir algo especial con los demás.</p>
+            </div>
+          `}
+
+          <div class="completion-actions">
+            <button class="primary-action-btn" onclick="quizPageInstance.goHome()">
+              🏠 ¡Listo! Ir a inicio
+            </button>
+            <button class="secondary-action-btn" onclick="quizPageInstance.tryAgain()">
+              🎲 Probar otro quiz
+            </button>
+          </div>
+
+          <div class="quiz-meta">
+            <p class="meta-text">📝 Quiz: ${quiz.title}</p>
+          </div>
+        </div>
+      `;
+    }
+
+    renderNoQuizzes() {
+      if (!this.mainContent) return;
+
+      this.mainContent.innerHTML = `
+        <div class="no-quizzes-stage">
+          <div class="completion-celebration">
+            <div class="celebration-icon">🏆</div>
+            <h2>¡Misión Cumplida!</h2>
+            <p class="celebration-text">
+              ¡Increíble! Has completado todos los quizzes disponibles. 
+              Eres un verdadero maestro del Halloween QR Trick or Treat.
+            </p>
+          </div>
+
+          <div class="achievement-section">
+            <h3>🎖️ ¡Logro Desbloqueado!</h3>
+            <div class="achievement-card">
+              <div class="achievement-icon">👑</div>
+              <h4>Explorador Completo</h4>
+              <p>Has explorado cada rincón de la aventura Halloween</p>
+            </div>
+          </div>
+
+          <div class="completion-actions">
+            <button class="primary-action-btn" onclick="quizPageInstance.goHome()">
+              🏠 Volver a inicio
+            </button>
+          </div>
+
+          <div class="suggestion-section">
+            <div class="suggestion-icon">💡</div>
+            <p>¡Invita a tus amigos a unirse a la aventura o espera a que se agreguen más quizzes!</p>
+          </div>
+        </div>
+      `;
+    }
+
+    renderError() {
+      if (!this.mainContent) return;
+
+      this.mainContent.innerHTML = `
+        <div class="error-stage">
+          <div class="error-icon">😱</div>
+          <h2>¡Algo salió mal!</h2>
+          <p class="error-text">${this.state.error || 'Error desconocido'}</p>
+          <div class="error-actions">
+            <button class="retry-btn" onclick="quizPageInstance.tryAgain()">
+              🔄 Intentar de nuevo
+            </button>
+            <button class="home-btn" onclick="quizPageInstance.goHome()">
+              🏠 Volver a inicio
+            </button>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // Crear instancia global
+  let quizPageInstance: QuizPage;
+
+  // Inicializar cuando el DOM esté listo
+  document.addEventListener('DOMContentLoaded', () => {
+    quizPageInstance = new QuizPage();
+    (window as any).quizPageInstance = quizPageInstance;
+  });
+</script>
+
+<style is:global>
+  .quiz-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+    padding: 1rem;
+  }
+
+  .quiz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .back-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #d1d5db;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+  }
+
+  .back-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(-2px);
+  }
+
+  .quiz-title {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #f7931e;
+    margin: 0;
+  }
+
+  .halloween-decoration {
+    font-size: 1.5rem;
+    animation: swing 2s ease-in-out infinite;
+  }
+
+  #quiz-content {
+    max-width: 600px;
+    margin: 0 auto;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.5s ease;
+  }
+
+  #quiz-content.loading {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  #quiz-content.loaded {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .loader {
+    text-align: center;
+    padding: 3rem;
+  }
+
+  .spinning-pumpkin {
+    font-size: 3rem;
+    animation: spin 2s linear infinite;
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  /* Choice Stage Styles */
+  .choice-stage {
+    animation: fadeInUp 0.6s ease;
+  }
+
+  .quiz-intro {
+    text-align: center;
+    margin-bottom: 3rem;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2rem;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 107, 53, 0.3);
+  }
+
+  .quiz-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+
+  .quiz-name {
+    font-size: 2rem;
+    color: #f7931e;
+    margin-bottom: 1rem;
+  }
+
+  .quiz-description {
+    font-size: 1.1rem;
+    color: #d1d5db;
+    line-height: 1.6;
+  }
+
+  .choice-section {
+    margin-bottom: 2rem;
+  }
+
+  .choice-title {
+    text-align: center;
+    font-size: 1.8rem;
+    color: #ff6b35;
+    margin-bottom: 0.5rem;
+  }
+
+  .choice-subtitle {
+    text-align: center;
+    color: #9ca3af;
+    margin-bottom: 2rem;
+    font-style: italic;
+  }
+
+  .choice-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    align-items: center;
+    margin-bottom: 3rem;
+    padding: 1rem;
+  }
+
+  .choice-btn {
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    border: 3px solid transparent;
+    border-radius: 24px;
+    padding: 0;
+    width: 100%;
+    max-width: 480px;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    text-align: left;
+    color: white;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  .choice-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, transparent 0%, rgba(255, 255, 255, 0.15) 50%, transparent 100%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+
+  .choice-btn:hover::before {
+    opacity: 1;
+  }
+
+  .choice-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s ease;
+    pointer-events: none;
+  }
+
+  .choice-btn:hover::after {
+    left: 100%;
+  }
+
+  .trick-btn {
+    border-color: rgba(249, 115, 22, 0.5);
+    background: linear-gradient(135deg, 
+      rgba(249, 115, 22, 0.15) 0%, 
+      rgba(234, 88, 12, 0.1) 50%, 
+      rgba(194, 65, 12, 0.05) 100%);
+    box-shadow: 
+      0 8px 32px rgba(249, 115, 22, 0.2),
+      0 0 0 1px rgba(249, 115, 22, 0.1) inset;
+  }
+
+  .treat-btn {
+    border-color: rgba(168, 85, 247, 0.5);
+    background: linear-gradient(135deg, 
+      rgba(168, 85, 247, 0.15) 0%, 
+      rgba(147, 51, 234, 0.1) 50%, 
+      rgba(126, 34, 206, 0.05) 100%);
+    box-shadow: 
+      0 8px 32px rgba(168, 85, 247, 0.2),
+      0 0 0 1px rgba(168, 85, 247, 0.1) inset;
+  }
+
+  .trick-btn:active {
+    transform: translateY(-4px) scale(1.01);
+  }
+
+  .treat-btn:active {
+    transform: translateY(-4px) scale(1.01);
+  }
+
+  /* Add pulsing glow effect for buttons */
+  .trick-btn:hover {
+    border-color: #f97316;
+    background: linear-gradient(135deg, 
+      rgba(249, 115, 22, 0.25) 0%, 
+      rgba(234, 88, 12, 0.2) 50%, 
+      rgba(194, 65, 12, 0.15) 100%);
+    transform: translateY(-6px) scale(1.03);
+    box-shadow: 
+      0 20px 60px rgba(249, 115, 22, 0.4),
+      0 0 0 2px rgba(249, 115, 22, 0.3) inset,
+      0 0 30px rgba(249, 115, 22, 0.6);
+    animation: pulse-trick 2s infinite;
+  }
+
+  .treat-btn:hover {
+    border-color: #a855f7;
+    background: linear-gradient(135deg, 
+      rgba(168, 85, 247, 0.25) 0%, 
+      rgba(147, 51, 234, 0.2) 50%, 
+      rgba(126, 34, 206, 0.15) 100%);
+    transform: translateY(-6px) scale(1.03);
+    box-shadow: 
+      0 20px 60px rgba(168, 85, 247, 0.4),
+      0 0 0 2px rgba(168, 85, 247, 0.3) inset,
+      0 0 30px rgba(168, 85, 247, 0.6);
+    animation: pulse-treat 2s infinite;
+  }
+
+  @keyframes pulse-trick {
+    0%, 100% {
+      box-shadow: 
+        0 20px 60px rgba(249, 115, 22, 0.4),
+        0 0 0 2px rgba(249, 115, 22, 0.3) inset,
+        0 0 30px rgba(249, 115, 22, 0.6);
+    }
+    50% {
+      box-shadow: 
+        0 25px 70px rgba(249, 115, 22, 0.6),
+        0 0 0 3px rgba(249, 115, 22, 0.4) inset,
+        0 0 40px rgba(249, 115, 22, 0.8);
+    }
+  }
+
+  @keyframes pulse-treat {
+    0%, 100% {
+      box-shadow: 
+        0 20px 60px rgba(168, 85, 247, 0.4),
+        0 0 0 2px rgba(168, 85, 247, 0.3) inset,
+        0 0 30px rgba(168, 85, 247, 0.6);
+    }
+    50% {
+      box-shadow: 
+        0 25px 70px rgba(168, 85, 247, 0.6),
+        0 0 0 3px rgba(168, 85, 247, 0.4) inset,
+        0 0 40px rgba(168, 85, 247, 0.8);
+    }
+  }
+
+  .choice-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2rem 2rem 0 2rem;
+    position: relative;
+  }
+
+  .choice-icon {
+    font-size: 4rem;
+    filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4));
+    transition: all 0.3s ease;
+    animation: float 3s ease-in-out infinite;
+    position: relative;
+    z-index: 2;
+  }
+
+  .choice-btn:hover .choice-icon {
+    transform: scale(1.1) rotate(-5deg);
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+  }
+
+  .trick-btn .choice-icon {
+    animation-delay: 0s;
+  }
+
+  .treat-btn .choice-icon {
+    animation-delay: 1.5s;
+  }
+
+  .choice-badge {
+    padding: 0.75rem 1.25rem;
+    border-radius: 25px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .choice-badge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.6s ease;
+  }
+
+  .choice-btn:hover .choice-badge::before {
+    left: 100%;
+  }
+
+  .trick-badge {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    color: #ffffff;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .treat-badge {
+    background: linear-gradient(135deg, #a855f7, #9333ea);
+    color: #ffffff;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .choice-content {
+    padding: 0 2rem 1.5rem 2rem;
+    position: relative;
+    z-index: 2;
+  }
+
+  .choice-content h4 {
+    font-size: 1.6rem;
+    margin: 0 0 0.75rem 0;
+    font-weight: bold;
+    color: #f9fafb;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .choice-content p {
+    margin: 0 0 1.25rem 0;
+    color: #e5e7eb;
+    font-size: 1.1rem;
+    line-height: 1.6;
+    font-weight: 400;
+  }
+
+  .choice-preview {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(5px);
+    border-radius: 16px;
+    padding: 1.25rem;
+    margin-top: 1.25rem;
+    border-left: 4px solid;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .choice-preview::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .choice-btn:hover .choice-preview::before {
+    opacity: 1;
+  }
+
+  .trick-btn .choice-preview {
+    border-left-color: #f97316;
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(0, 0, 0, 0.4));
+  }
+
+  .treat-btn .choice-preview {
+    border-left-color: #a855f7;
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(0, 0, 0, 0.4));
+  }
+
+  .preview-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    font-weight: bold;
+    color: #9ca3af;
+    letter-spacing: 1.5px;
+    display: block;
+    margin-bottom: 0.75rem;
+    opacity: 0.8;
+  }
+
+  .preview-text {
+    color: #f9fafb;
+    font-style: italic;
+    font-size: 1rem;
+    line-height: 1.5;
+    display: block;
+    font-weight: 500;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .choice-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 2rem;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.2));
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(5px);
+    position: relative;
+  }
+
+  .choice-action::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  }
+
+  .action-text {
+    font-weight: 600;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #f9fafb;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .choice-arrow {
+    font-size: 1.8rem;
+    opacity: 0.8;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #f9fafb;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .choice-btn:hover .choice-arrow {
+    opacity: 1;
+    transform: translateX(10px) scale(1.2);
+    color: #ffffff;
+  }
+
+  .choice-divider {
+    position: relative;
+    text-align: center;
+    margin: 3rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+  }
+
+  .divider-line {
+    flex: 1;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #6b7280, #9ca3af, #6b7280, transparent);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .divider-line::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+    animation: shimmer 3s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
+
+  .divider-text {
+    color: #f9fafb;
+    font-weight: bold;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    padding: 1rem 2rem;
+    background: linear-gradient(135deg, rgba(107, 114, 128, 0.4), rgba(75, 85, 99, 0.6));
+    border-radius: 30px;
+    border: 2px solid rgba(156, 163, 175, 0.3);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .divider-text::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s ease;
+  }
+
+  .divider-text:hover::before {
+    left: 100%;
+  }
+
+  .explanation-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin: 2rem 0;
+  }
+
+  .explanation-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+  }
+
+  .trick-explanation {
+    border-color: rgba(255, 107, 53, 0.3);
+  }
+
+  .trick-explanation:hover {
+    border-color: rgba(255, 107, 53, 0.6);
+    background: rgba(255, 107, 53, 0.05);
+  }
+
+  .treat-explanation {
+    border-color: rgba(168, 85, 247, 0.3);
+  }
+
+  .treat-explanation:hover {
+    border-color: rgba(168, 85, 247, 0.6);
+    background: rgba(168, 85, 247, 0.05);
+  }
+
+  .explanation-icon {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    display: block;
+  }
+
+  .explanation-card h4 {
+    color: #f9fafb;
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+  }
+
+  .explanation-card ul {
+    margin: 0;
+    padding-left: 1.2rem;
+    color: #d1d5db;
+  }
+
+  .explanation-card li {
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+  }
+
+  .hint-section {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+  }
+
+  .hint-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .hint-text {
+    color: #93c5fd;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* Result Stage Styles */
+  .result-stage {
+    animation: fadeInUp 0.6s ease;
+  }
+
+  .result-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .result-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    animation: bounce 1s ease infinite;
+  }
+
+  .choice-badge {
+    display: inline-block;
+    padding: 0.5rem 1.5rem;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .trick-badge {
+    background: linear-gradient(45deg, #ff6b35, #f7931e);
+    color: white;
+  }
+
+  .treat-badge {
+    background: linear-gradient(45deg, #10b981, #059669);
+    color: white;
+  }
+
+  .result-content {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .result-title {
+    font-size: 1.8rem;
+    color: #f7931e;
+    margin-bottom: 1.5rem;
+    text-align: center;
+  }
+
+  .result-description {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    color: #e5e7eb;
+    text-align: center;
+  }
+
+  .trick-notice, .treat-notice {
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  .trick-notice {
+    background: rgba(255, 107, 53, 0.1);
+    border: 1px solid rgba(255, 107, 53, 0.3);
+  }
+
+  .treat-notice {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .notice-icon {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+  }
+
+  .notice-icon + h4 {
+    margin-bottom: 1rem;
+    color: #f7931e;
+  }
+
+  .completion-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .primary-action-btn {
+    background: linear-gradient(45deg, #10b981, #059669);
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .primary-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+  }
+
+  .secondary-action-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: #d1d5db;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 1rem 2rem;
+    border-radius: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .secondary-action-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .quiz-meta {
+    text-align: center;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .meta-text {
+    color: #6b7280;
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  /* No Quizzes Stage */
+  .no-quizzes-stage {
+    text-align: center;
+    animation: fadeInUp 0.6s ease;
+  }
+
+  .completion-celebration {
+    background: linear-gradient(45deg, #fbbf24, #f59e0b);
+    color: #1f2937;
+    padding: 3rem 2rem;
+    border-radius: 16px;
+    margin-bottom: 2rem;
+  }
+
+  .celebration-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    animation: bounce 2s infinite;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .quiz-container {
+      padding: 1rem;
+    }
+
+    .quiz-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .quiz-title {
+      font-size: 1.8rem;
+    }
+
+    .choice-buttons {
+      gap: 1rem;
+    }
+
+    .choice-btn {
+      max-width: 100%;
+    }
+
+    .choice-icon {
+      font-size: 2.5rem;
+    }
+
+    .choice-content h4 {
+      font-size: 1.2rem;
+    }
+
+    .choice-preview {
+      padding: 0.75rem;
+    }
+
+    .explanation-section {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+
+    .explanation-card {
+      padding: 1rem;
+    }
+
+    .choice-divider {
+      margin: 1.5rem 0;
+    }
+
+    .divider-text {
+      font-size: 0.8rem;
+      letter-spacing: 1px;
+    }
+
+    .quiz-intro {
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .quiz-name {
+      font-size: 1.5rem;
+    }
+
+    .choice-title {
+      font-size: 1.5rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .choice-header {
+      padding: 1rem 1rem 0 1rem;
+    }
+
+    .choice-content {
+      padding: 0 1rem 0.75rem 1rem;
+    }
+
+    .choice-action {
+      padding: 0.75rem 1rem;
+    }
+
+    .explanation-card {
+      padding: 1rem;
+    }
+
+    .explanation-icon {
+      font-size: 1.5rem;
+    }
+
+    .hint-section {
+      padding: 1rem;
+    }
+  }
+
+  /* Animation Keyframes */
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .choice-btn:active {
+    transform: translateY(-2px) scale(0.98);
+  }
+
+  /* Add subtle animations */
+  .choice-stage {
+    animation: slideInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .explanation-section {
+    animation: fadeIn 0.8s ease 0.3s both;
+  }
+
+  @keyframes slideInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .celebration-text {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    margin: 1rem 0;
+  }
+
+  .achievement-section {
+    margin-bottom: 2rem;
+  }
+
+  .achievement-section h3 {
+    color: #f7931e;
+    margin-bottom: 1rem;
+  }
+
+  .achievement-card {
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 12px;
+    padding: 2rem;
+  }
+
+  .achievement-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+
+  .achievement-card h4 {
+    color: #ffd700;
+    margin-bottom: 0.5rem;
+  }
+
+  .suggestion-section {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+  }
+
+  .suggestion-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Error Stage */
+  .error-stage {
+    text-align: center;
+    padding: 3rem;
+    animation: fadeInUp 0.6s ease;
+  }
+
+  .error-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+  }
+
+  .error-text {
+    color: #ef4444;
+    margin-bottom: 2rem;
+  }
+
+  .error-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .retry-btn, .home-btn {
+    padding: 1rem 2rem;
+    border: none;
+    border-radius: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .retry-btn {
+    background: linear-gradient(45deg, #ef4444, #dc2626);
+    color: white;
+  }
+
+  .home-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: #d1d5db;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .retry-btn:hover, .home-btn:hover {
+    transform: translateY(-2px);
+  }
+
+  /* Animaciones */
+  @keyframes swing {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(5deg); }
+    75% { transform: rotate(-5deg); }
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .quiz-header {
+      flex-direction: column;
+      gap: 1rem;
+      text-align: center;
+    }
+
+    .choice-buttons {
+      gap: 1.5rem;
+    }
+
+    .choice-btn {
+      flex-direction: column;
+      text-align: center;
+      gap: 1rem;
+    }
+
+    .choice-arrow {
+      margin-left: 0;
+      transform: rotate(90deg);
+    }
+
+    .choice-btn:hover .choice-arrow {
+      transform: rotate(90deg) translateY(-5px);
+    }
+
+    .completion-actions {
+      gap: 1rem;
+    }
+
+    .error-actions {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .retry-btn, .home-btn {
+      width: 100%;
+      max-width: 250px;
+    }
+  }
+</style>
