@@ -3,6 +3,7 @@ import { getLeaderboard } from '../lib/quiz-utils';
 import type { LeaderboardEntry } from '../lib/quiz-utils';
 
 export const RankList = () => {
+  console.log('RankList component is rendering...');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -10,8 +11,12 @@ export const RankList = () => {
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
+        console.log('fetchLeaderboard called...');
         setLoading(true);
+        console.log('About to call getLeaderboard...');
         const data = await getLeaderboard();
+        console.log('getLeaderboard returned:', data);
+        console.log('Number of entries:', data.length);
         setLeaderboard(data);
       } catch (err) {
         console.error('Error fetching leaderboard:', err);
@@ -48,7 +53,7 @@ export const RankList = () => {
     if (entry.displayName) {
       return entry.displayName;
     }
-    // Show first part of email before @
+    // Fallback to showing first part of email before @
     return entry.email.split('@')[0];
   };
 

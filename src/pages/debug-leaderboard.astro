@@ -1,0 +1,201 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Leaderboard Debug">
+  <main style="padding: 20px; font-family: monospace; max-width: 1200px;">
+    <h1>🐛 Leaderboard Debug Information</h1>
+    
+    <div id="loading" style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0;">
+      <h2>🔄 Loading...</h2>
+      <p>Checking authentication and database status...</p>
+    </div>
+    
+    <div id="debug-results" style="display: none;">
+      <!-- Results will be populated by JavaScript -->
+    </div>
+    
+    <hr style="margin: 30px 0;" />
+    <p>
+      <a href="/home">← Back to Home</a> | 
+      <a href="/get-random-quiz">Take a Quiz</a> |
+      <a href="/supabase-example">Login/Register</a>
+    </p>
+  </main>
+
+  <script>
+    import { supabase } from '../lib/supabase';
+    import { getLeaderboard } from '../lib/quiz-utils';
+
+    async function debugLeaderboard() {
+      const loadingDiv = document.getElementById('loading');
+      const resultsDiv = document.getElementById('debug-results');
+      
+      try {
+        console.log('🔍 Starting leaderboard debug...');
+        
+        // Step 1: Check authentication
+        const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
+        console.log('Auth check result:', { currentUser, authError });
+        
+        // Step 2: Check session
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        console.log('Session check result:', { sessionData, sessionError });
+        
+        // Step 3: Get all selections directly
+        const { data: allSelections, error: selectionsError } = await supabase
+          .from('user_selected_quizzes')
+          .select('*');
+        console.log('Selections query result:', { allSelections, selectionsError });
+        
+        // Step 4: Try the leaderboard function
+        console.log('🎯 Calling getLeaderboard function...');
+        const leaderboardResult = await getLeaderboard();
+        console.log('Leaderboard function result:', leaderboardResult);
+        
+        // Process results
+        const userIds = allSelections ? [...new Set(allSelections.map(s => s.user_id))] : [];
+        
+        const debugInfo = {
+          authentication: {
+            isAuthenticated: !!currentUser,
+            userId: currentUser?.id,
+            userEmail: currentUser?.email,
+            userMetadata: currentUser?.user_metadata,
+            authError: authError?.message,
+            hasSession: !!sessionData?.session,
+            sessionError: sessionError?.message
+          },
+          database: {
+            totalSelections: allSelections?.length || 0,
+            uniqueUsers: userIds.length,
+            userIds: userIds,
+            selectionsError: selectionsError?.message,
+            rawSelections: allSelections || []
+          },
+          leaderboard: {
+            resultCount: leaderboardResult?.length || 0,
+            result: leaderboardResult || []
+          }
+        };
+        
+        // Display results
+        displayResults(debugInfo);
+        
+      } catch (error) {
+        console.error('Debug error:', error);
+        displayError(error);
+      } finally {
+        if (loadingDiv) loadingDiv.style.display = 'none';
+        if (resultsDiv) resultsDiv.style.display = 'block';
+      }
+    }
+
+    function displayResults(debugInfo) {
+      const resultsDiv = document.getElementById('debug-results');
+      if (!resultsDiv) return;
+      
+      const auth = debugInfo.authentication;
+      const db = debugInfo.database;
+      const leaderboard = debugInfo.leaderboard;
+      
+      let html = `
+        <div style="background: ${auth.isAuthenticated ? '#e8f5e8' : '#ffebee'}; padding: 15px; border-radius: 8px; margin: 10px 0;">
+          <h2>${auth.isAuthenticated ? '✅' : '❌'} Authentication Status</h2>
+          <ul>
+            <li><strong>Authenticated:</strong> ${auth.isAuthenticated ? 'YES' : 'NO'}</li>
+            <li><strong>User ID:</strong> ${auth.userId || 'None'}</li>
+            <li><strong>Email:</strong> ${auth.userEmail || 'None'}</li>
+            <li><strong>Display Name:</strong> ${auth.userMetadata?.display_name || 'None'}</li>
+            <li><strong>Has Session:</strong> ${auth.hasSession ? 'YES' : 'NO'}</li>`;
+      
+      if (auth.authError) html += `<li><strong>Auth Error:</strong> ${auth.authError}</li>`;
+      if (auth.sessionError) html += `<li><strong>Session Error:</strong> ${auth.sessionError}</li>`;
+      
+      html += `
+          </ul>
+        </div>
+
+        <div style="background: ${db.totalSelections > 0 ? '#e8f5e8' : '#fff3e0'}; padding: 15px; border-radius: 8px; margin: 10px 0;">
+          <h2>📊 Database Status</h2>
+          <ul>
+            <li><strong>Total Selections:</strong> ${db.totalSelections}</li>
+            <li><strong>Unique Users:</strong> ${db.uniqueUsers}</li>
+            <li><strong>User IDs:</strong> ${db.userIds.length > 0 ? db.userIds.map(id => id.slice(-8)).join(', ') : 'None'}</li>`;
+      
+      if (db.selectionsError) html += `<li><strong>Database Error:</strong> ${db.selectionsError}</li>`;
+      
+      html += `
+          </ul>
+        </div>
+
+        <div style="background: ${leaderboard.resultCount > 0 ? '#e8f5e8' : '#ffebee'}; padding: 15px; border-radius: 8px; margin: 10px 0;">
+          <h2>🏆 Leaderboard Function Result</h2>
+          <ul>
+            <li><strong>Entries Returned:</strong> ${leaderboard.resultCount}</li>
+          </ul>`;
+      
+      if (leaderboard.resultCount > 0) {
+        html += `
+          <h3>Leaderboard Entries:</h3>
+          <div style="background: white; padding: 10px; border-radius: 4px;">`;
+        
+        leaderboard.result.forEach((entry, index) => {
+          html += `
+            <div style="padding: 8px; margin: 4px 0; border-left: 3px solid #2196f3; background: #f5f5f5;">
+              <strong>Rank ${entry.rank}:</strong> ${entry.displayName} (${entry.userId.slice(-8)})<br>
+              <small>Tricks: ${entry.tricksCompleted}, Treats: ${entry.treatsCompleted}, Total: ${entry.totalQuizzes}</small>
+            </div>`;
+        });
+        
+        html += `</div>`;
+      } else {
+        html += `<p><em>No leaderboard entries found</em></p>`;
+      }
+      
+      html += `</div>`;
+      
+      if (db.totalSelections > 0) {
+        html += `
+          <details style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 10px 0;">
+            <summary style="cursor: pointer; font-weight: bold;">🔍 Raw Database Data (${db.totalSelections} entries)</summary>
+            <pre style="white-space: pre-wrap; font-size: 11px; margin-top: 10px; max-height: 300px; overflow-y: auto;">${JSON.stringify(db.rawSelections, null, 2)}</pre>
+          </details>`;
+      }
+      
+      html += `
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0;">
+          <h3>🔧 Troubleshooting</h3>`;
+      
+      if (!auth.isAuthenticated) {
+        html += `<p><strong>⚠️ Not authenticated:</strong> <a href="/supabase-example">Please login first</a></p>`;
+      }
+      if (db.totalSelections === 0) {
+        html += `<p><strong>⚠️ No quiz data:</strong> <a href="/get-random-quiz">Take some quizzes first</a></p>`;
+      }
+      if (auth.isAuthenticated && db.totalSelections > 0 && leaderboard.resultCount === 0) {
+        html += `<p><strong>⚠️ Leaderboard function issue:</strong> Check the console for getLeaderboard() errors</p>`;
+      }
+      
+      html += `</div>`;
+      
+      resultsDiv.innerHTML = html;
+    }
+
+    function displayError(error) {
+      const resultsDiv = document.getElementById('debug-results');
+      if (!resultsDiv) return;
+      
+      resultsDiv.innerHTML = `
+        <div style="background: #ffebee; padding: 15px; border-radius: 8px; color: #c62828;">
+          <h2>❌ Debug Error</h2>
+          <p><strong>Error:</strong> ${error.message}</p>
+          <pre style="background: white; padding: 10px; border-radius: 4px; font-size: 12px;">${error.stack || error.toString()}</pre>
+        </div>
+      `;
+    }
+
+    // Run debug when page loads
+    debugLeaderboard();
+  </script>
+</Layout>

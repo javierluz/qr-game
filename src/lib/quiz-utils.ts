@@ -311,85 +311,138 @@ export interface LeaderboardEntry {
  */
 export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
   try {
-    // Get all user selections and group by user
-    const { data: allSelections, error: selectionsError } = await supabase
+    console.log('Starting getLeaderboard...');
+    
+    // Get ALL user selections first (we'll filter later)
+    const { data: selections, error } = await supabase
       .from('user_selected_quizzes')
       .select('user_id, choice, completed, deserted');
-    
-    if (selectionsError) {
-      console.error('Error getting user selections:', selectionsError);
+
+    if (error) {
+      console.error('Error fetching selections:', error);
       return [];
     }
 
-    // Group selections by user_id
+    if (!selections || selections.length === 0) {
+      console.log('No selections found');
+      return [];
+    }
+
+    console.log('Total selections found:', selections.length);
+    console.log('Sample selections:', selections.slice(0, 5));
+    
+    // Log EACH selection to see all user_ids
+    console.log('ALL SELECTIONS:');
+    selections.forEach((sel, index) => {
+      console.log(`Selection ${index}: user_id=${sel.user_id}, choice=${sel.choice}, completed=${sel.completed}, deserted=${sel.deserted}`);
+    });
+    
+    // Get unique user IDs
+    const uniqueUserIds = [...new Set(selections.map(sel => sel.user_id))];
+    console.log('Unique user IDs found:', uniqueUserIds);
+    console.log('Number of unique users:', uniqueUserIds.length);
+
+    // Get current user to identify them in the list
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const currentUserId = currentUser?.id;
+    
+    // Group by user and calculate stats
     const userStatsMap = new Map<string, { tricksCompleted: number; treatsCompleted: number; totalQuizzes: number }>();
     
-    allSelections?.forEach(selection => {
+    selections.forEach(selection => {
       const userId = selection.user_id;
-      const current = userStatsMap.get(userId) || { tricksCompleted: 0, treatsCompleted: 0, totalQuizzes: 0 };
+      const stats = userStatsMap.get(userId) || { tricksCompleted: 0, treatsCompleted: 0, totalQuizzes: 0 };
       
-      current.totalQuizzes++;
-      if (selection.choice === 'trick' && !selection.deserted) {
-        // Only count tricks that are not deserted for ranking
-        current.tricksCompleted++;
-      } else if (selection.choice === 'treat' && selection.completed === true) {
-        // Only completed treats count for ranking
-        current.treatsCompleted++;
+      stats.totalQuizzes++;
+      
+      if (selection.choice === 'trick') {
+        // Only count non-deserted tricks
+        if (!selection.deserted) {
+          stats.tricksCompleted++;
+        }
+      } else if (selection.choice === 'treat') {
+        // Only count completed treats
+        if (selection.completed) {
+          stats.treatsCompleted++;
+        }
       }
       
-      userStatsMap.set(userId, current);
+      userStatsMap.set(userId, stats);
     });
 
-    // Create leaderboard entries with simplified user info
+    console.log('Users found:', userStatsMap.size);
+    console.log('User stats map:', Array.from(userStatsMap.entries()));
+
+    // Create leaderboard entries for ALL users
     const leaderboardEntries: Omit<LeaderboardEntry, 'rank'>[] = [];
-    
+
     for (const [userId, stats] of userStatsMap.entries()) {
-      // For now, use a simplified approach - in a production app you'd have a users table
-      // or use Supabase RLS to get user details
+      const isCurrentUser = userId === currentUserId;
+      
+      // Create a unique player name for each user
+      let displayName: string;
+      let email: string;
+      
+      if (isCurrentUser && currentUser) {
+        displayName = currentUser.user_metadata?.display_name || 
+                     currentUser.user_metadata?.full_name || 
+                     'Tú';
+        email = currentUser.email || 'tu-email@example.com';
+      } else {
+        // Generate unique names for other players based on their user ID
+        const userSuffix = userId.slice(-4); // Last 4 chars of user ID
+        displayName = `Jugador ${userSuffix}`;
+        email = `jugador${userSuffix}@example.com`;
+      }
+
       leaderboardEntries.push({
         userId: userId,
-        email: `Usuario ${userId.slice(0, 8)}...`, // Show first 8 chars of UUID
-        displayName: `Jugador ${leaderboardEntries.length + 1}`,
+        email: email,
+        displayName: displayName,
         tricksCompleted: stats.tricksCompleted,
         treatsCompleted: stats.treatsCompleted,
         totalQuizzes: stats.totalQuizzes
       });
     }
 
-    // Sort by tricks first (descending), then by treats (descending)
+    console.log('Leaderboard entries before sorting:', leaderboardEntries);
+
+    // Sort by scoring rules: tricks first, then treats
     leaderboardEntries.sort((a, b) => {
-      if (a.tricksCompleted !== b.tricksCompleted) {
+      if (b.tricksCompleted !== a.tricksCompleted) {
         return b.tricksCompleted - a.tricksCompleted;
       }
       return b.treatsCompleted - a.treatsCompleted;
     });
 
-    // Assign ranks, handling ties
+    // Assign ranks (handle ties)
     const rankedEntries: LeaderboardEntry[] = [];
     let currentRank = 1;
     
     for (let i = 0; i < leaderboardEntries.length; i++) {
-      const currentEntry = leaderboardEntries[i];
-      
       if (i > 0) {
-        const previousEntry = leaderboardEntries[i - 1];
-        // If current entry has different scores than previous, update rank
-        if (currentEntry.tricksCompleted !== previousEntry.tricksCompleted || 
-            currentEntry.treatsCompleted !== previousEntry.treatsCompleted) {
+        const prev = leaderboardEntries[i - 1];
+        const curr = leaderboardEntries[i];
+        
+        // If scores are different, update rank
+        if (prev.tricksCompleted !== curr.tricksCompleted || 
+            prev.treatsCompleted !== curr.treatsCompleted) {
           currentRank = i + 1;
         }
         // If they have the same scores, they keep the same rank
       }
       
       rankedEntries.push({
-        ...currentEntry,
+        ...leaderboardEntries[i],
         rank: currentRank
       });
     }
 
+    console.log('Final leaderboard:', rankedEntries);
     return rankedEntries;
+    
   } catch (error) {
-    console.error('Error getting leaderboard:', error);
+    console.error('Error in getLeaderboard:', error);
     return [];
   }
 }
