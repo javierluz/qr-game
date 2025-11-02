@@ -1,0 +1,124 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { AuthComponent } from '../components/AuthComponent';
+---
+
+<Layout title="QR Game - Login" description="Login to access multiplayer game sessions">
+  <main>
+    <div class="auth-page">
+      <div class="auth-header">
+        <h1>🎮 QR Game Access</h1>
+        <p>Login or create an account to manage multiplayer game sessions</p>
+      </div>
+      
+      <AuthComponent client:load />
+      
+      <div class="auth-info">
+        <h3>🎯 What you can do:</h3>
+        <ul>
+          <li>🎲 Create multiplayer game sessions</li>
+          <li>👥 Manage players and turns</li>
+          <li>🏆 Track scores and leaderboards</li>
+          <li>⏸️ Pause and resume games</li>
+          <li>📱 Perfect for party games!</li>
+        </ul>
+        
+        <div class="back-link">
+          <a href="/">← Back to Home</a>
+        </div>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  main {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem 1rem;
+  }
+
+  .auth-page {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .auth-header {
+    text-align: center;
+    margin-bottom: 2rem;
+    color: white;
+  }
+
+  .auth-header h1 {
+    font-size: 2.5rem;
+    margin: 0 0 1rem 0;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .auth-header p {
+    font-size: 1.2rem;
+    margin: 0;
+    opacity: 0.9;
+  }
+
+  .auth-info {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-top: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+  }
+
+  .auth-info h3 {
+    margin: 0 0 1rem 0;
+    color: #fbbf24;
+  }
+
+  .auth-info ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 2rem 0;
+  }
+
+  .auth-info li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .auth-info li:last-child {
+    border-bottom: none;
+  }
+
+  .back-link {
+    text-align: center;
+    margin-top: 1rem;
+  }
+
+  .back-link a {
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    transition: all 0.2s;
+    display: inline-block;
+  }
+
+  .back-link a:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  @media (max-width: 768px) {
+    .auth-header h1 {
+      font-size: 2rem;
+    }
+
+    .auth-info {
+      margin: 1rem;
+      padding: 1.5rem;
+    }
+  }
+</style>

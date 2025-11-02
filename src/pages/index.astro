@@ -26,6 +26,13 @@ import Layout from '../layouts/Layout.astro';
 					<p>Get a random Trick or Treat</p>
 				</div>
 			</a>
+			<a href="/login" class="game-link multiplayer">
+				<div class="link-icon">🎮</div>
+				<div class="link-content">
+					<h3>Multiplayer Sessions</h3>
+					<p>Create or join party games</p>
+				</div>
+			</a>
 		</div>
 	</div>
 	
@@ -96,6 +103,16 @@ import Layout from '../layouts/Layout.astro';
 	.game-link.secondary:hover {
 		transform: translateY(-2px);
 		box-shadow: 0 8px 25px rgba(249, 115, 22, 0.4);
+	}
+
+	.game-link.multiplayer {
+		background: linear-gradient(135deg, #059669, #10b981);
+		color: white;
+	}
+
+	.game-link.multiplayer:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 25px rgba(5, 150, 105, 0.4);
 	}
 
 	.link-icon {

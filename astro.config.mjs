@@ -9,6 +9,6 @@ export default defineConfig({
     plugins: [tailwindcss()]
   },
   integrations: [react()],
-  output: 'static', // o 'server' si usas SSR
+  output: 'static',
   adapter: undefined, // Cloudflare Pages maneja esto automáticamente
 });

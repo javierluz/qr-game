@@ -191,6 +191,9 @@ import Layout from '../layouts/Layout.astro';
       // Clear form
       (document.getElementById('login-email') as HTMLInputElement).value = '';
       (document.getElementById('login-password') as HTMLInputElement).value = '';
+      
+      // Redirect to sessions page after successful login
+      window.location.href = '/sessions';
     }
   });
 

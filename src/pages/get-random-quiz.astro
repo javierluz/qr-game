@@ -6,7 +6,7 @@ import Layout from '../layouts/Layout.astro';
   <div class="quiz-container">
     <!-- Header -->
     <header class="quiz-header">
-      <a href="/home" class="back-button">← Volver</a>
+      <a href="javascript:history.back()" class="back-button" id="back-button">← Volver</a>
       <h1 class="quiz-title">Nueva Aventura</h1>
       <div class="halloween-decoration">🕸️</div>
     </header>
@@ -23,6 +23,8 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { getCurrentUser, getRandomUnseenQuiz, saveUserSelection, hasAvailableQuizzes } from '../lib/quiz-utils';
+  import { dynamicScoringService } from '../lib/dynamicScoringService';
+  import { supabase } from '../lib/supabase';
   import type { Quiz } from '../lib/quiz-utils';
 
   interface QuizPageState {
@@ -32,6 +34,7 @@ import Layout from '../layouts/Layout.astro';
     loading: boolean;
     error: string | null;
     stage: 'loading' | 'choosing' | 'showing' | 'completed' | 'no-quizzes';
+    processingAction: boolean; // Nuevo estado para bloquear botones
   }
 
   class QuizPage {
@@ -41,14 +44,69 @@ import Layout from '../layouts/Layout.astro';
       selectedChoice: null,
       loading: true,
       error: null,
-      stage: 'loading'
+      stage: 'loading',
+      processingAction: false
     };
 
     private mainContent: HTMLElement | null = null;
 
     constructor() {
       this.mainContent = document.getElementById('quiz-content');
+      this.setupBackButton();
       this.init();
+    }
+
+    setupBackButton() {
+      const backButton = document.getElementById('back-button');
+      if (backButton) {
+        backButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.goBack();
+        });
+      }
+    }
+
+    goBack() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('sessionId');
+      
+      if (sessionId) {
+        // Si estamos en una sesión, volver a la vista de sesión
+        window.location.href = `/sessions/play?id=${sessionId}`;
+      } else {
+        // Si es modo individual, usar history.back o ir a home
+        if (document.referrer && !document.referrer.includes('/get-random-quiz')) {
+          window.history.back();
+        } else {
+          window.location.href = '/home';
+        }
+      }
+    }
+
+    updateButtonStates() {
+      // Actualizar el estado de los botones basado en si estamos procesando
+      const buttons = document.querySelectorAll('.action-btn');
+      buttons.forEach((button: Element) => {
+        const btn = button as HTMLButtonElement;
+        if (this.state.processingAction) {
+          btn.disabled = true;
+          btn.classList.add('processing');
+          // Agregar texto de loading si no está ya
+          if (!btn.textContent?.includes('...')) {
+            btn.dataset.originalText = btn.textContent || '';
+            const icon = btn.textContent?.split(' ')[0] || '';
+            btn.innerHTML = `<span class="loading-spinner">⏳</span> Procesando...`;
+          }
+        } else {
+          btn.disabled = false;
+          btn.classList.remove('processing');
+          // Restaurar texto original
+          if (btn.dataset.originalText) {
+            btn.textContent = btn.dataset.originalText;
+            delete btn.dataset.originalText;
+          }
+        }
+      });
     }
 
     async init() {
@@ -95,25 +153,171 @@ import Layout from '../layouts/Layout.astro';
       this.state.loading = false;
     }
 
-    async makeChoice(choice: 'trick' | 'treat') {
-      if (!this.state.currentQuiz || !this.state.user) return;
+    async selectTrick(chooseTrick: boolean) {
+      if (!this.state.currentQuiz || !this.state.user || this.state.processingAction) return;
 
-      this.state.selectedChoice = choice;
-      this.state.stage = 'showing';
-      this.render();
-
-      // Guardar la selección en la base de datos
       try {
-        await saveUserSelection(this.state.user.id, this.state.currentQuiz.id, choice);
-        console.log('Selección guardada exitosamente');
+        // Bloquear botones
+        this.state.processingAction = true;
+        this.updateButtonStates();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('sessionId');
+        const playerId = urlParams.get('playerId');
+
+        if (chooseTrick) {
+          // El jugador elige el trick
+          if (sessionId && playerId) {
+            // Usando sistema dinámico (sesión multiplayer)
+            const result = await dynamicScoringService.selectNewTrick(playerId, sessionId, this.state.currentQuiz.id);
+            if (!result.success) {
+              throw new Error(result.message);
+            }
+          } else {
+            // Usando sistema legacy (usuario individual)
+            const saved = await saveUserSelection(this.state.user.id, this.state.currentQuiz.id, 'trick');
+            if (!saved) {
+              throw new Error('Error al guardar la selección');
+            }
+          }
+          
+          this.state.selectedChoice = 'trick';
+          this.state.stage = 'showing';
+          // Resetear estado de procesamiento antes de render
+          this.state.processingAction = false;
+          this.render();
+        } else {
+          // El jugador rechaza el trick (-1 punto)
+          if (sessionId && playerId) {
+            // Sistema dinámico: aplicar penalidad al player
+            await this.applyPenalty(playerId, sessionId);
+          }
+          // En sistema legacy no hay penalidad por saltar
+          
+          this.state.processingAction = false; // Desbloquear antes de mostrar skip
+          this.showSkipMessage();
+          return;
+        }
       } catch (error) {
-        console.error('Error guardando selección:', error);
-        // Continúa mostrando el contenido aunque falle el guardado
+        console.error('Error selecting trick:', error);
+        this.state.error = 'Error al procesar tu elección. Inténtalo de nuevo.';
+        this.state.processingAction = false;
+        this.render();
       }
     }
 
+    async selectTreat() {
+      if (!this.state.currentQuiz || !this.state.user || this.state.processingAction) return;
+
+      try {
+        // Bloquear botones
+        this.state.processingAction = true;
+        this.updateButtonStates();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('sessionId');
+        const playerId = urlParams.get('playerId');
+
+        // El jugador elige el treat
+        if (sessionId && playerId) {
+          // Usando sistema dinámico (sesión multiplayer)
+          const result = await dynamicScoringService.selectNewTreat(playerId, sessionId, this.state.currentQuiz.id);
+          if (!result.success) {
+            throw new Error(result.message);
+          }
+        } else {
+          // Usando sistema legacy (usuario individual)
+          const saved = await saveUserSelection(this.state.user.id, this.state.currentQuiz.id, 'treat');
+          if (!saved) {
+            throw new Error('Error al guardar la selección');
+          }
+        }
+        
+        this.state.selectedChoice = 'treat';
+        this.state.stage = 'showing';
+        // Resetear estado de procesamiento antes de render
+        this.state.processingAction = false;
+        this.render();
+      } catch (error) {
+        console.error('Error selecting treat:', error);
+        this.state.error = 'Error al procesar tu elección. Inténtalo de nuevo.';
+        this.state.processingAction = false;
+        this.render();
+      }
+    }
+
+    async applyPenalty(playerId: string, sessionId: string) {
+      try {
+        // Primero obtener el puntaje actual
+        const { data: player, error: fetchError } = await supabase
+          .from('players')
+          .select('current_score')
+          .eq('id', playerId)
+          .eq('session_id', sessionId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        // Restar 1 punto (pero no menos de 0)
+        const newScore = Math.max(0, (player?.current_score || 0) - 1);
+
+        const { error } = await supabase
+          .from('players')
+          .update({ current_score: newScore })
+          .eq('id', playerId)
+          .eq('session_id', sessionId);
+
+        if (error) throw error;
+      } catch (error) {
+        console.error('Error applying penalty:', error);
+        throw error;
+      }
+    }
+
+    showSkipMessage() {
+      if (!this.mainContent) return;
+
+      this.mainContent.innerHTML = `
+        <div class="skip-stage">
+          <div class="skip-header">
+            <div class="skip-icon">⏭️</div>
+            <h2 class="skip-title">Turno Saltado</h2>
+          </div>
+          
+          <div class="skip-content">
+            <p>Has decidido saltar este desafío.</p>
+            <p class="penalty-notice">Se ha restado 1 punto de tu puntuación.</p>
+          </div>
+
+          <div class="completion-actions">
+            <button 
+              class="primary-action-btn" 
+              onclick="quizPageInstance.goHome()"
+              ${this.state.processingAction ? 'disabled' : ''}
+            >
+              🏠 Continuar Juego
+            </button>
+          </div>
+        </div>
+      `;
+      
+      // Asegurar que los botones se actualicen después del render
+      setTimeout(() => this.updateButtonStates(), 0);
+    }
+
     goHome() {
-      window.location.href = '/home';
+      // Obtener parámetros de la URL para redireccionar correctamente
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('sessionId');
+      const playerId = urlParams.get('playerId');
+      
+      if (sessionId && playerId) {
+        // Si estamos en una sesión, volver a la vista de sesión
+        window.location.href = `/sessions/play?id=${sessionId}`;
+      } else {
+        // Si es modo individual, volver a home
+        window.location.href = '/home';
+      }
     }
 
     tryAgain() {
@@ -131,6 +335,8 @@ import Layout from '../layouts/Layout.astro';
 
       if (this.state.error) {
         this.renderError();
+        // Asegurar que los botones se actualicen después del render
+        setTimeout(() => this.updateButtonStates(), 0);
         return;
       }
 
@@ -147,6 +353,9 @@ import Layout from '../layouts/Layout.astro';
         default:
           this.renderError();
       }
+      
+      // Asegurar que los botones se actualicen después del render
+      setTimeout(() => this.updateButtonStates(), 0);
     }
 
     renderChoosing() {
@@ -163,28 +372,41 @@ import Layout from '../layouts/Layout.astro';
           </div>
 
           <div class="choice-section">
-            <h3 class="choice-title">🎯 ¿Qué path eliges?</h3>
-            <p class="choice-subtitle">Cada camino te llevará a una experiencia completamente diferente...</p>
+            <h3 class="choice-title">🎯 ¿Qué camino eliges?</h3>
+            <p class="choice-subtitle">Cada uno te llevará a una experiencia completamente diferente 🫣...</p>
             
             <div class="choice-buttons">
-              <button class="choice-btn trick-btn" onclick="quizPageInstance.makeChoice('trick')">
-                <div class="choice-header">
+              <!-- Preview del Trick -->
+              <div class="choice-preview-container">
+                <div class="choice-preview-header">
                   <div class="choice-icon">🎭</div>
                   <div class="choice-badge trick-badge">TRICK</div>
                 </div>
-                <div class="choice-content">
+                <div class="choice-preview-content">
                   <h4>Desafío Atrevido</h4>
-                  <p>Un reto que debes cumplir en la vida real</p>
                   <div class="choice-preview">
-                    <span class="preview-label">Vista previa:</span>
+                    <span class="preview-label">Tu desafío sería:</span>
                     <span class="preview-text">"${quiz.trick_title}"</span>
+                    <div class="preview-description">${quiz.trick_content}</div>
                   </div>
                 </div>
-                <div class="choice-action">
-                  <span class="action-text">Acepto el desafío</span>
-                  <div class="choice-arrow">→</div>
+                <div class="choice-actions">
+                  <button 
+                    class="action-btn primary-btn" 
+                    onclick="quizPageInstance.selectTrick(true)"
+                    ${this.state.processingAction ? 'disabled' : ''}
+                  >
+                    ✅ Elegir
+                  </button>
+                  <button 
+                    class="action-btn secondary-btn" 
+                    onclick="quizPageInstance.selectTrick(false)"
+                    ${this.state.processingAction ? 'disabled' : ''}
+                  >
+                    ⏭️ Saltar (-1)
+                  </button>
                 </div>
-              </button>
+              </div>
 
               <div class="choice-divider">
                 <div class="divider-line"></div>
@@ -192,24 +414,30 @@ import Layout from '../layouts/Layout.astro';
                 <div class="divider-line"></div>
               </div>
 
-              <button class="choice-btn treat-btn" onclick="quizPageInstance.makeChoice('treat')">
-                <div class="choice-header">
+              <!-- Preview del Treat -->
+              <div class="choice-preview-container">
+                <div class="choice-preview-header">
                   <div class="choice-icon">🍭</div>
                   <div class="choice-badge treat-badge">TREAT</div>
                 </div>
-                <div class="choice-content">
+                <div class="choice-preview-content">
                   <h4>Confesión Divertida</h4>
-                  <p>Una pregunta personal para compartir</p>
                   <div class="choice-preview">
-                    <span class="preview-label">Vista previa:</span>
+                    <span class="preview-label">Tu pregunta sería:</span>
                     <span class="preview-text">"${quiz.treat_title}"</span>
+                    <div class="preview-description">${quiz.treat_content}</div>
                   </div>
                 </div>
-                <div class="choice-action">
-                  <span class="action-text">Quiero compartir</span>
-                  <div class="choice-arrow">→</div>
+                <div class="choice-actions">
+                  <button 
+                    class="action-btn primary-btn" 
+                    onclick="quizPageInstance.selectTreat()"
+                    ${this.state.processingAction ? 'disabled' : ''}
+                  >
+                    🍬 Elegir Treat
+                  </button>
                 </div>
-              </button>
+              </div>
             </div>
           </div>
 
@@ -220,8 +448,8 @@ import Layout from '../layouts/Layout.astro';
               <ul>
                 <li>Desafíos que debes completar</li>
                 <li>Actividades en la vida real</li>
-                <li>Solo puedes tener 1 trick activo</li>
-                <li>Reemplaza tu trick anterior</li>
+                <li>Puedes tener todos los tricks que quieras</li>
+                <li>Tus tricks te dan puntos cada inicio de turno</li>
               </ul>
             </div>
             
@@ -232,7 +460,7 @@ import Layout from '../layouts/Layout.astro';
                 <li>Preguntas para reflexionar</li>
                 <li>Confesiones divertidas</li>
                 <li>Para compartir con otros</li>
-                <li>No hay límite de treats</li>
+                <li>Cada treat completado te da 1 punto</li>
               </ul>
             </div>
           </div>
@@ -290,10 +518,18 @@ import Layout from '../layouts/Layout.astro';
           `}
 
           <div class="completion-actions">
-            <button class="primary-action-btn" onclick="quizPageInstance.goHome()">
+            <button 
+              class="primary-action-btn" 
+              onclick="quizPageInstance.goHome()"
+              ${this.state.processingAction ? 'disabled' : ''}
+            >
               🏠 ¡Listo! Ir a inicio
             </button>
-            <button class="secondary-action-btn" onclick="quizPageInstance.tryAgain()">
+            <button 
+              class="secondary-action-btn" 
+              onclick="quizPageInstance.tryAgain()"
+              ${this.state.processingAction ? 'disabled' : ''}
+            >
               🎲 Probar otro quiz
             </button>
           </div>
@@ -329,7 +565,11 @@ import Layout from '../layouts/Layout.astro';
           </div>
 
           <div class="completion-actions">
-            <button class="primary-action-btn" onclick="quizPageInstance.goHome()">
+            <button 
+              class="primary-action-btn" 
+              onclick="quizPageInstance.goHome()"
+              ${this.state.processingAction ? 'disabled' : ''}
+            >
               🏠 Volver a inicio
             </button>
           </div>
@@ -351,10 +591,18 @@ import Layout from '../layouts/Layout.astro';
           <h2>¡Algo salió mal!</h2>
           <p class="error-text">${this.state.error || 'Error desconocido'}</p>
           <div class="error-actions">
-            <button class="retry-btn" onclick="quizPageInstance.tryAgain()">
+            <button 
+              class="retry-btn" 
+              onclick="quizPageInstance.tryAgain()"
+              ${this.state.processingAction ? 'disabled' : ''}
+            >
               🔄 Intentar de nuevo
             </button>
-            <button class="home-btn" onclick="quizPageInstance.goHome()">
+            <button 
+              class="home-btn" 
+              onclick="quizPageInstance.goHome()"
+              ${this.state.processingAction ? 'disabled' : ''}
+            >
               🏠 Volver a inicio
             </button>
           </div>
@@ -447,9 +695,166 @@ import Layout from '../layouts/Layout.astro';
     margin-bottom: 1rem;
   }
 
-  /* Choice Stage Styles */
-  .choice-stage {
+  /* Choice Preview Container Styles */
+  .choice-preview-container {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    border: 3px solid transparent;
+    border-radius: 24px;
+    width: 100%;
+    max-width: 480px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .choice-preview-container:hover {
+    transform: translateY(-6px) scale(1.02);
+    border-color: rgba(255, 107, 53, 0.6);
+    box-shadow: 0 20px 60px rgba(255, 107, 53, 0.4);
+  }
+
+  .choice-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2rem 2rem 0 2rem;
+    position: relative;
+  }
+
+  .choice-preview-content {
+    padding: 0 2rem 1.5rem 2rem;
+    position: relative;
+    z-index: 2;
+  }
+
+  .choice-preview-content h4 {
+    font-size: 1.6rem;
+    margin: 0 0 1rem 0;
+    font-weight: bold;
+    color: #f9fafb;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .choice-preview .preview-description {
+    font-size: 0.9rem;
+    color: #d1d5db;
+    margin-top: 0.75rem;
+    line-height: 1.4;
+    font-style: normal;
+  }
+
+  .choice-actions {
+    display: flex;
+    gap: 1rem;
+    padding: 1.5rem 2rem;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.2));
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(5px);
+  }
+
+  .action-btn {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    border: none;
+    border-radius: 12px;
+    font-weight: bold;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .action-btn:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .action-btn:disabled:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .action-btn.processing {
+    pointer-events: none;
+    position: relative;
+  }
+
+  .loading-spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .primary-btn {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+  }
+
+  .primary-btn:hover {
+    background: linear-gradient(135deg, #059669, #047857);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+  }
+
+  .secondary-btn {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: white;
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+  }
+
+  .secondary-btn:hover {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+  }
+
+  /* Skip Stage Styles */
+  .skip-stage {
+    text-align: center;
     animation: fadeInUp 0.6s ease;
+  }
+
+  .skip-header {
+    margin-bottom: 2rem;
+  }
+
+  .skip-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    animation: bounce 1s ease infinite;
+  }
+
+  .skip-title {
+    font-size: 2rem;
+    color: #ef4444;
+    margin: 0;
+  }
+
+  .skip-content {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+  }
+
+  .penalty-notice {
+    color: #ef4444;
+    font-weight: bold;
+    font-size: 1.1rem;
+    margin: 1rem 0 0 0;
   }
 
   .quiz-intro {
@@ -1367,6 +1772,18 @@ import Layout from '../layouts/Layout.astro';
     font-weight: bold;
     cursor: pointer;
     transition: all 0.3s ease;
+  }
+
+  .retry-btn:disabled, .home-btn:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+  }
+
+  .primary-action-btn:disabled, .secondary-action-btn:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
   }
 
   .retry-btn {

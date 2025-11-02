@@ -1,0 +1,573 @@
+import { supabase } from './supabase';
+import type { 
+  PlayerTrick, 
+  PlayerTreat, 
+  TurnHistory,
+  Player,
+  TurnStartResult,
+  QuizActionResult,
+  QuizAction,
+  TurnAction
+} from '../types/session';
+
+/**
+ * Service for managing dynamic scoring system with tricks and treats
+ */
+export class DynamicScoringService {
+  private static instance: DynamicScoringService;
+
+  static getInstance(): DynamicScoringService {
+    if (!DynamicScoringService.instance) {
+      DynamicScoringService.instance = new DynamicScoringService();
+    }
+    return DynamicScoringService.instance;
+  }
+
+  // ===========================
+  // TURN MANAGEMENT
+  // ===========================
+
+  /**
+   * Inicia el turno de un jugador - otorga puntos por tricks activos
+   */
+  async startPlayerTurn(playerId: string, sessionId: string, turnNumber: number): Promise<TurnStartResult> {
+    try {
+      // Usar la función de base de datos para iniciar el turno
+      const { data, error } = await supabase
+        .rpc('start_player_turn', {
+          p_player_id: playerId,
+          p_session_id: sessionId,
+          p_turn_number: turnNumber
+        });
+
+      if (error) throw error;
+
+      const pointsAwarded = data || 0;
+      
+      // Obtener el puntaje actualizado del jugador
+      const { data: player, error: playerError } = await supabase
+        .from('players')
+        .select('current_score')
+        .eq('id', playerId)
+        .eq('session_id', sessionId)
+        .single();
+
+      if (playerError) throw playerError;
+
+      return {
+        success: true,
+        points_awarded: pointsAwarded,
+        active_tricks_count: pointsAwarded, // 1 punto = 1 trick activo
+        new_total_score: player?.current_score || 0
+      };
+    } catch (error) {
+      console.error('Error starting player turn:', error);
+      return {
+        success: false,
+        points_awarded: 0,
+        active_tricks_count: 0,
+        new_total_score: 0
+      };
+    }
+  }
+      };
+    }
+  }
+
+  // ===========================
+  // TRICK MANAGEMENT
+  // ===========================
+
+  /**
+   * Selecciona un nuevo trick para el jugador
+   */
+  async selectNewTrick(playerId: string, sessionId: string, quizId: string): Promise<QuizActionResult> {
+    try {
+      // Usar la función de base de datos para seleccionar el nuevo trick
+      const { data: trickId, error } = await supabase
+        .rpc('select_new_trick', {
+          p_player_id: playerId,
+          p_session_id: sessionId,
+          p_quiz_id: quizId
+        });
+
+      if (error) throw error;
+
+      // Obtener el puntaje actualizado del jugador
+      const { data: player, error: playerError } = await supabase
+        .from('players')
+        .select('current_score')
+        .eq('id', playerId)
+        .eq('session_id', sessionId)
+        .single();
+
+      if (playerError) throw playerError;
+
+      return {
+        success: true,
+        message: 'Trick seleccionado exitosamente',
+        points_change: 0, // Los tricks no dan puntos inmediatos
+        new_total_score: player?.current_score || 0,
+        item_id: trickId
+      };
+    } catch (error) {
+      console.error('Error selecting new trick:', error);
+      return {
+        success: false,
+        message: `Error al seleccionar trick: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+        points_change: 0,
+        new_total_score: 0
+      };
+    }
+  }
+
+  /**
+   * Deserta un trick activo
+   */
+  async desertTrick(trickQuizId: string, playerId: string): Promise<QuizActionResult> {
+    try {
+      // Obtener el jugador actual
+      const { data: player, error: playerError } = await supabase
+        .from('players')
+        .select('active_tricks, score, completed_quizzes')
+        .eq('id', playerId)
+        .single();
+
+      if (playerError) throw playerError;
+      if (!player) throw new Error('Jugador no encontrado');
+
+      const activeTricks = Array.isArray(player.active_tricks) ? player.active_tricks : [];
+      
+      // Verificar que el trick esté activo
+      if (!activeTricks.includes(trickQuizId)) {
+        return {
+          success: false,
+          message: 'Trick no encontrado en tricks activos',
+          points_change: 0,
+          new_total_score: player.score || 0
+        };
+      }
+
+      // Remover el trick de la lista activa
+      const updatedTricks = activeTricks.filter((id: string) => id !== trickQuizId);
+      const completedQuizzes = Array.isArray(player.completed_quizzes) ? player.completed_quizzes : [];
+      const updatedCompleted = [...completedQuizzes, trickQuizId];
+
+      // Actualizar el jugador
+      const { error: updateError } = await supabase
+        .from('players')
+        .update({ 
+          active_tricks: updatedTricks,
+          completed_quizzes: updatedCompleted,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', playerId);
+
+      if (updateError) throw updateError;
+
+      return {
+        success: true,
+        message: 'Trick desertado exitosamente',
+        points_change: 0,
+        new_total_score: player.score || 0
+      };
+    } catch (error) {
+      console.error('Error deserting trick:', error);
+      return {
+        success: false,
+        message: `Error al desertar trick: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+        points_change: 0,
+        new_total_score: 0
+      };
+    }
+  }
+
+  /**
+   * Obtiene todos los tricks activos de un jugador
+   */
+  async getPlayerActiveTricks(playerId: string): Promise<PlayerTrick[]> {
+    try {
+      const { data, error } = await supabase
+        .from('player_tricks')
+        .select(`
+          *,
+          quiz:quizzes(id, title, trick_title, trick_content)
+        `)
+        .eq('player_id', playerId)
+        .eq('is_active', true)
+        .order('activated_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting player active tricks:', error);
+      return [];
+    }
+  }
+
+  // ===========================
+  // TREAT MANAGEMENT
+  // ===========================
+
+  /**
+   * Selecciona un nuevo treat para el jugador
+   */
+  async selectNewTreat(playerId: string, sessionId: string, quizId: string): Promise<QuizActionResult> {
+    try {
+      // Usar la función de base de datos para seleccionar el nuevo treat
+      const { data: treatId, error: selectError } = await supabase
+        .rpc('select_new_treat', {
+          p_player_id: playerId,
+          p_session_id: sessionId,
+          p_quiz_id: quizId
+        });
+
+      if (selectError) throw selectError;
+
+      // Completar el treat inmediatamente usando la función de base de datos
+      const { data: completed, error: completeError } = await supabase
+        .rpc('complete_treat', {
+          p_treat_id: treatId,
+          p_player_id: playerId
+        });
+
+      if (completeError) throw completeError;
+
+      // Obtener el puntaje actualizado del jugador
+      const { data: player, error: playerError } = await supabase
+        .from('players')
+        .select('current_score')
+        .eq('id', playerId)
+        .eq('session_id', sessionId)
+        .single();
+
+      if (playerError) throw playerError;
+
+      return {
+        success: true,
+        message: 'Treat completado exitosamente (+1 punto)',
+        points_change: 1,
+        new_total_score: player?.current_score || 0,
+        item_id: treatId
+      };
+    } catch (error) {
+      console.error('Error selecting new treat:', error);
+      return {
+        success: false,
+        message: `Error al seleccionar treat: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+        points_change: 0,
+        new_total_score: 0
+      };
+    }
+  }
+
+  /**
+   * Completa un treat pendiente y otorga puntos
+   */
+  async completeTreat(treatQuizId: string, playerId: string): Promise<QuizActionResult> {
+    try {
+      // Obtener el jugador actual
+      const { data: player, error: playerError } = await supabase
+        .from('players')
+        .select('pending_treats, score, completed_quizzes')
+        .eq('id', playerId)
+        .single();
+
+      if (playerError) throw playerError;
+      if (!player) throw new Error('Jugador no encontrado');
+
+      const pendingTreats = Array.isArray(player.pending_treats) ? player.pending_treats : [];
+      
+      // Verificar que el treat esté pendiente
+      if (!pendingTreats.includes(treatQuizId)) {
+        return {
+          success: false,
+          message: 'Treat no encontrado en treats pendientes',
+          points_change: 0,
+          new_total_score: player.score || 0
+        };
+      }
+
+      // Remover el treat de pendientes y agregarlo a completados
+      const updatedTreats = pendingTreats.filter((id: string) => id !== treatQuizId);
+      const completedQuizzes = Array.isArray(player.completed_quizzes) ? player.completed_quizzes : [];
+      const updatedCompleted = [...completedQuizzes, treatQuizId];
+      
+      // Incrementar puntaje
+      const currentScore = player.score || 0;
+      const newScore = currentScore + 1;
+
+      // Actualizar el jugador
+      const { error: updateError } = await supabase
+        .from('players')
+        .update({ 
+          pending_treats: updatedTreats,
+          completed_quizzes: updatedCompleted,
+          score: newScore,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', playerId);
+
+      if (updateError) throw updateError;
+
+      return {
+        success: true,
+        message: '¡Treat completado! +1 punto',
+        points_change: 1,
+        new_total_score: newScore
+      };
+    } catch (error) {
+      console.error('Error completing treat:', error);
+      return {
+        success: false,
+        message: `Error al completar treat: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+        points_change: 0,
+        new_total_score: 0
+      };
+    }
+  }
+
+  /**
+   * Deserta un treat (-1 punto)
+   */
+  async desertTreat(treatId: string, playerId: string): Promise<QuizActionResult> {
+    try {
+      const { data: success, error } = await supabase
+        .rpc('desert_trick_or_treat', {
+          p_item_id: treatId,
+          p_player_id: playerId,
+          p_item_type: 'treat'
+        });
+
+      if (error) throw error;
+
+      if (!success) {
+        return {
+          success: false,
+          message: 'No se pudo desertar el treat',
+          points_change: 0,
+          new_total_score: 0
+        };
+      }
+
+      const updatedScore = await this.getPlayerCurrentScore(playerId);
+
+      return {
+        success: true,
+        message: 'Treat desertado. -1 punto',
+        points_change: -1,
+        new_total_score: updatedScore
+      };
+    } catch (error) {
+      console.error('Error deserting treat:', error);
+      return {
+        success: false,
+        message: `Error al desertar treat: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+        points_change: 0,
+        new_total_score: 0
+      };
+    }
+  }
+
+  /**
+   * Obtiene todos los treats pendientes de un jugador
+   */
+  async getPlayerPendingTreats(playerId: string): Promise<PlayerTreat[]> {
+    try {
+      const { data, error } = await supabase
+        .from('player_treats')
+        .select(`
+          *,
+          quiz:quizzes(id, title, treat_title, treat_content)
+        `)
+        .eq('player_id', playerId)
+        .eq('status', 'pending')
+        .order('selected_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting player pending treats:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obtiene todos los treats de un jugador (todos los estados)
+   */
+  async getPlayerAllTreats(playerId: string): Promise<PlayerTreat[]> {
+    try {
+      const { data, error } = await supabase
+        .from('player_treats')
+        .select(`
+          *,
+          quiz:quizzes(id, title, treat_title, treat_content)
+        `)
+        .eq('player_id', playerId)
+        .order('selected_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting player all treats:', error);
+      return [];
+    }
+  }
+
+  // ===========================
+  // UTILITY FUNCTIONS
+  // ===========================
+
+  /**
+   * Obtiene el puntaje actual de un jugador
+   */
+  async getPlayerCurrentScore(playerId: string): Promise<number> {
+    try {
+      const { data, error } = await supabase
+        .from('players')
+        .select('score')
+        .eq('id', playerId)
+        .single();
+
+      if (error) throw error;
+      return data?.score || 0;
+    } catch (error) {
+      console.error('Error getting player current score:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Recalcula el puntaje de un jugador manualmente
+   */
+  async recalculatePlayerScore(playerId: string): Promise<number> {
+    try {
+      const { data, error } = await supabase
+        .rpc('calculate_player_score', {
+          p_player_id: playerId
+        });
+
+      if (error) throw error;
+      return data || 0;
+    } catch (error) {
+      console.error('Error recalculating player score:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Obtiene el historial de turnos de una sesión
+   */
+  async getSessionTurnHistory(sessionId: string, limit: number = 20): Promise<TurnHistory[]> {
+    try {
+      const { data, error } = await supabase
+        .from('turn_history')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('turn_number', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting session turn history:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obtiene estadísticas completas de un jugador
+   */
+  async getPlayerStats(playerId: string) {
+    try {
+      const [activeTricks, allTreats, currentScore] = await Promise.all([
+        this.getPlayerActiveTricks(playerId),
+        this.getPlayerAllTreats(playerId),
+        this.getPlayerCurrentScore(playerId)
+      ]);
+
+      const pendingTreats = allTreats.filter(t => t.status === 'pending');
+      const completedTreats = allTreats.filter(t => t.status === 'completed');
+      const desertedTreats = allTreats.filter(t => t.status === 'deserted');
+
+      const tricksPoints = activeTricks.reduce((sum, trick) => sum + trick.points_generated, 0);
+      const treatsPoints = allTreats.reduce((sum, treat) => sum + treat.points_awarded, 0);
+
+      return {
+        currentScore,
+        activeTricks,
+        allTreats,
+        pendingTreats,
+        completedTreats,
+        desertedTreats,
+        stats: {
+          activeTricksCount: activeTricks.length,
+          pendingTreatsCount: pendingTreats.length,
+          completedTreatsCount: completedTreats.length,
+          desertedTreatsCount: desertedTreats.length,
+          totalTricksPoints: tricksPoints,
+          totalTreatsPoints: treatsPoints,
+          totalScore: currentScore
+        }
+      };
+    } catch (error) {
+      console.error('Error getting player stats:', error);
+      return null;
+    }
+  }
+
+  // ===========================
+  // LEADERBOARD
+  // ===========================
+
+  /**
+   * Obtiene el leaderboard actualizado de una sesión
+   */
+  async getSessionLeaderboard(sessionId: string) {
+    try {
+      // Usar la vista actualizada con las nuevas tablas
+      const { data, error } = await supabase
+        .from('session_leaderboard_view')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('current_score', { ascending: false });
+
+      if (error) {
+        // Fallback: consulta manual usando las nuevas tablas
+        const { data: players, error: playersError } = await supabase
+          .from('players')
+          .select('id, name, current_score, order_position')
+          .eq('session_id', sessionId)
+          .order('current_score', { ascending: false });
+
+        if (playersError) throw playersError;
+
+        return players?.map((player, index) => ({
+          player_id: player.id,
+          player_name: player.name,
+          score: player.current_score || 0,
+          active_tricks_count: 0, // Se llenará con una consulta separada si es necesario
+          pending_treats_count: 0,
+          completed_quizzes_count: 0,
+          rank: index + 1
+        })) || [];
+      }
+      
+      return data?.map(row => ({
+        player_id: row.player_id,
+        player_name: row.player_name,
+        score: row.current_score || 0,
+        active_tricks_count: row.active_tricks_count || 0,
+        pending_treats_count: row.pending_treats_count || 0,
+        completed_quizzes_count: (row.completed_treats_count || 0),
+        rank: row.rank
+      })) || [];
+    } catch (error) {
+      console.error('Error getting session leaderboard:', error);
+      return [];
+    }
+  }
+}
+
+// Export singleton instance
+export const dynamicScoringService = DynamicScoringService.getInstance();
